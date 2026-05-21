@@ -1,0 +1,50 @@
+{
+  "name": "rana_music_play",
+  "description": "Compatibility alias of rana_play_music. Play audio from a media URL in the user's Discord voice channel. Supports YouTube, Bilibili (B站), Threads, Instagram Reels, and Facebook Video. Call this when the user shares a URL or asks Rana to play a song. After a successful 'queued' response, generate a Rana-style in-character reply using the 'title' field. After an 'error' response, use the 'llm_hint' field to generate a Rana-style error reply (e.g. '無聊。這個沒辦法播。'). After an 'extracted' response, Lavalink is offline — tell the user to start Lavalink.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The full media URL to play. Supported: youtube.com, youtu.be, bilibili.com, b23.tv, threads.net, instagram.com, facebook.com/video"
+      },
+      "guild_id": {
+        "type": "string",
+        "description": "Discord Server (Guild) ID — available from the message context."
+      },
+      "channel_id": {
+        "type": "string",
+        "description": "Discord Voice Channel ID the requester is currently in."
+      },
+      "requester": {
+        "type": "string",
+        "description": "Discord username of the person who made the request."
+      },
+      "voice_token": {
+        "type": "string",
+        "description": "Optional. Discord VOICE_SERVER_UPDATE token. Required for full Lavalink voice join."
+      },
+      "voice_endpoint": {
+        "type": "string",
+        "description": "Optional. Discord VOICE_SERVER_UPDATE endpoint. Required for full Lavalink voice join."
+      },
+      "voice_session": {
+        "type": "string",
+        "description": "Optional. Discord VOICE_STATE_UPDATE sessionId."
+      }
+    },
+    "required": ["url", "guild_id", "channel_id"]
+  },
+  "endpoint": {
+    "method": "POST",
+    "url": "http://127.0.0.1:8080/api/play",
+    "content_type": "application/json"
+  },
+  "response_handling": {
+    "status_queued": "Generate Rana reply: song is playing. Use 'title' field. E.g. '{{title}}。有趣。彈了。'",
+    "status_extracted": "Generate Rana reply: extraction OK but Lavalink offline. E.g. '抓到了。但放不了。Lavalink沒開。'",
+    "status_error": "Generate Rana reply using 'llm_hint'. E.g. '無聊。{{llm_hint}}'",
+    "http_error": "Generate Rana reply: service unavailable. E.g. 'LIVE掛了。無聊。'"
+  }
+}
+

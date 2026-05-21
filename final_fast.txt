@@ -1,0 +1,81 @@
+[T1] GET /health
+  [OK] [T1] GET /health
+       -> HTTP 200 | service=online | lavalink=offline | version=1.1.0
+       body: {"service": "online", "lavalink": "offline", "version": "1.1.0", "lavalink_version": null}
+
+[T4] POST /api/stop
+  [OK] [T4] POST /api/stop
+       -> HTTP 200 | status=stopped | guild=123456789012345678
+       body: {"status": "stopped", "guild": "123456789012345678", "note": "Lavalink offline; player state cleared locally."}
+
+[T5] DELETE /api/destroy
+  [OK] [T5] DELETE /api/destroy
+       -> HTTP 200 | status=destroyed | guild=123456789012345678
+       body: {"status": "destroyed", "guild": "123456789012345678", "note": "Lavalink offline; nothing to destroy."}
+
+[T7] POST /api/play (empty URL -> 422)
+  [OK] [T7] POST /api/play (empty URL)
+       -> HTTP 422 - Pydantic url_must_not_be_empty fired
+       body: {"detail": [{"type": "value_error", "loc": ["body", "url"], "msg": "Value error, url cannot be empty.", "input": "   ", "ctx": {"error": {}}}]}
+
+[T8] POST /api/play (missing fields -> 422)
+  [OK] [T8] POST /api/play (missing fields)
+       -> HTTP 422 - Missing: [['body', 'guild_id'], ['body', 'channel_id']]
+       body: {"detail": [{"type": "missing", "loc": ["body", "guild_id"], "msg": "Field required", "input": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}}, {"type": "missing", "loc": ["body", "channel_id"], "msg": "Field required", "input": {"url": "http
+
+[T9] OpenClaw Tool Payload Dry-Run
+  [OK] [T9] OpenClaw Tool Payload Dry-Run
+       -> All fields valid. Schema required=['url', 'guild_id', 'channel_id']
+       body: {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "guild_id": "123456789012345678", "channel_id": "987654321098765432", "requester": "Rana", "voice_token": null, "voice_endpoint": null, "voice_session": null}
+
+================================================================
+  FAST TEST RESULTS (T1, T4, T5, T7, T8, T9)
+----------------------------------------------------------------
+  T1   GET /health                                [OK] PASS
+  T4   POST /api/stop                             [OK] PASS
+  T5   DELETE /api/destroy                        [OK] PASS
+  T7   POST /api/play (empty URL)                 [OK] PASS
+  T8   POST /api/play (missing fields)            [OK] PASS
+  T9   OpenClaw Tool Payload Dry-Run              [OK] PASS
+
+  Total: 6 | PASS: 6 | WARN: 0 | FAIL: 0
+
+  [INFO] Lavalink OFFLINE - T4/T5 state-reset via Lavalink skipped (expected).
+
+  *** FAST TESTS: IGNITION READY ***
+================================================================
+================================================================
+  [RANA] Slow Tests (T2/T3/T6) -- yt-dlp Network Tests
+  Timestamp: 2026-04-27 23:27:58
+================================================================
+
+[T2] POST /api/play (YouTube) -- may take 20-45s...
+  [OK] [T2] POST /api/play (YouTube)
+       -> HTTP 200 | status=extracted | title='Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)' | duration=213s | platform=Youtube | 5.6s elapsed
+       body: {"status": "extracted", "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)", "stream_url": "https://rr3---sn-ipoxu-un5ee.googlevideo.com/videoplayback?expire=1777325281&ei=gYDvaZSiAe6A2roPleSwyA8&ip=114.32.141.242&id=o-AHLNHuAN6lIR3p40aPq0K_pd4VjPRn0I7zAW8j-2pFEZ&itag=251
+
+[T3] POST /api/play (Bilibili) -- may take 20-45s...
+  [WN] [T3] POST /api/play (Bilibili)
+       -> Bilibili needs cookies/login [1.0s]: That content is region-locked or has been deleted. Nothing I can do.
+       body: {"status": "error", "title": null, "stream_url": null, "duration": null, "platform": null, "thumbnail": null, "uploader": null, "message": "ERROR: [BiliBili] 1GJ411x7h7: This video may be deleted or geo-restricted. You might want to try a VPN or a proxy server (with --proxy)", "llm_hint": "That cont
+
+[T6] POST /api/play (broken URL) -- testing llm_hint...
+  [OK] [T6] POST /api/play (broken URL)
+       -> HTTP 200 | llm_hint is Rana-style [0.6s]: 'Can't reach that URL. Either the site is down or the link is broken.'
+       body: {"status": "error", "title": null, "stream_url": null, "duration": null, "platform": null, "thumbnail": null, "uploader": null, "message": "ERROR: [generic] Unable to download webpage: [Errno 11001] getaddrinfo failed (caused by TransportError('[Errno 11001] getaddrinfo failed'))", "llm_hint": "Can'
+
+================================================================
+  SLOW TEST RESULTS (T2, T3, T6) -- yt-dlp Network Tests
+----------------------------------------------------------------
+  T2   POST /api/play (YouTube)                   [OK] PASS
+  T3   POST /api/play (Bilibili)                  [WN] WARN
+  T6   POST /api/play (broken URL)                [OK] PASS
+
+  Total: 3 | PASS: 2 | WARN: 1 | FAIL: 0
+
+  NOTE: WARN on T2/T3 = yt-dlp network/geo issue. Non-blocking.
+        WARN on T3 = Bilibili login-gate. Add cookies.txt to fix.
+
+  *** SLOW TESTS: IGNITION READY ***
+      (1 warning(s): network-dependent, non-blocking)
+================================================================

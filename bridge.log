@@ -1,0 +1,30 @@
+[2026-04-27 16:10:46] [BOOT] Rana Voice Bridge v1.0 starting...
+[2026-04-27 16:10:46] [BOOT] Lavalink target: 127.0.0.1:2333
+[2026-04-27 16:10:46] [BOOT] Bridge port: 8081
+[2026-04-27 16:10:48] [DISCORD] Logged in as Rana#8264 (1202969643162013776)
+[2026-04-27 16:10:48] [DISCORD] Guilds: 樂奈抹茶派對 (1486679037605842944)
+[2026-04-27 16:10:48] [LAVALINK] Connecting to ws://127.0.0.1:2333/v4/websocket...
+[2026-04-27 16:10:48] [BRIDGE] HTTP API on http://127.0.0.1:8081
+[2026-04-27 16:10:48] [BRIDGE]   GET  /health
+[2026-04-27 16:10:48] [BRIDGE]   POST /voice/play   { guild_id, channel_id, stream_url, title }
+[2026-04-27 16:10:48] [BRIDGE]   POST /voice/leave  { guild_id }
+[2026-04-27 16:10:48] [LAVALINK] WebSocket connected.
+[2026-04-27 16:10:48] [LAVALINK] Session ready: rw3z2e0xi69qgfy0
+[2026-04-27 16:11:01] [PLAY] guild=1486679037605842944 channel=1486679038696358003 title="【Official Music Video】春日影(MyGO!!!!! ver.) / MyGO!!!!!【オリジナル楽曲】"
+[2026-04-27 16:11:01] [VOICE] Sent OP4: disconnect guild=1486679037605842944 (pre-join cleanup)
+[2026-04-27 16:11:01] [VOICE] Sent OP4: join guild=1486679037605842944 channel=1486679038696358003
+[2026-04-27 16:11:01] [VOICE] State update: guild=1486679037605842944 session=cb54dd9adb374f2c6262de73ce317d65
+[2026-04-27 16:11:02] [VOICE] Server update: guild=1486679037605842944 endpoint=c-hkg13-cee9a4ff.discord.media:8443
+[2026-04-27 16:11:02] [PLAY] Joined VC. token=04552b94... endpoint=c-hkg13-cee9a4ff.discord.media:8443
+[2026-04-27 16:11:02] [LAVALINK] Loading track: https://rr1---sn-ipoxu-un5ee.googlevideo.com/videoplayback?expire=1777327862&ei=...
+[2026-04-27 16:11:02] [LAVALINK] loadtracks: HTTP 200 loadType=track
+[2026-04-27 16:11:02] [LAVALINK] Track encoded: QAAI2wMADVVua25vd24gdGl0bGUADlVua25vd24g...
+[2026-04-27 16:11:02] [LAVALINK] Combined PATCH: token=04552b94... endpoint=c-hkg13-cee9a4ff.discord.media session=cb54dd9adb374f2c6262de73ce317d65
+[2026-04-27 16:11:02] [LAVALINK] Payload: {"track":{"encoded":"QAAI2wMADVVua25vd24gdGl0bGUADlVua25vd24gYXJ0aXN0AAAAAAAD8/UER2h0dHBzOi8vcnIxLS0tc24taXBveHUtdW41ZWUuZ29vZ2xldmlkZW8uY29tL3ZpZGVvcGxheWJhY2s/ZXhwaXJlPTE3NzczMjc4NjImZWk9bG9ydmFZLVN...
+[2026-04-27 16:11:02] [LAVALINK] Event: TrackStartEvent guild=1486679037605842944
+[2026-04-27 16:11:02] [LAVALINK] Combined PATCH result: HTTP 200
+[2026-04-27 16:11:02] [LAVALINK] Response: {"guildId":"1486679037605842944","track":{"encoded":"QAAI2wMADVVua25vd24gdGl0bGUADlVua25vd24gYXJ0aXN0AAAAAAAD8/UER2h0dHBzOi8vcnIxLS0tc24taXBveHUtdW41ZWUuZ29vZ2xldmlkZW8uY29tL3ZpZGVvcGxheWJhY2s/ZXhwaXJlPTE3NzczMjc4NjImZWk9bG9ydmFZLVNEdGkyMnJvUGg0ZmYwQU0maXA9MTE0LjMyLjE0MS4yNDImaWQ9by1BRG1UOXpZOWZIeUN
+[2026-04-27 16:11:02] [PLAY] SUCCESS: "【Official Music Video】春日影(MyGO!!!!! ver.) / MyGO!!!!!【オリジナル楽曲】"
+[2026-04-27 16:11:02] [LAVALINK] Event: WebSocketClosedEvent guild=1486679037605842944 code=4006 reason="Session is no longer valid." byRemote=true
+[2026-04-27 16:12:11] [LAVALINK] Event: TrackEndEvent guild=1486679037605842944
+[2026-04-27 16:50:02] [VOICE] State update: guild=1486679037605842944 session=cb54dd9adb374f2c6262de73ce317d65

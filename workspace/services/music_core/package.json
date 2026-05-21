@@ -1,0 +1,14 @@
+{
+  "name": "rana-music-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rana Voice Gateway Bridge — discord.js + Lavalink v4 session management",
+  "scripts": {
+    "bridge": "node voice_bridge.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.0",
+    "dotenv": "^17.4.2",
+    "ws": "^8.18.0"
+  }
+}

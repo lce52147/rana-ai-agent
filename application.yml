@@ -1,0 +1,29 @@
+server:
+  port: 2333
+  address: 127.0.0.1
+lavalink:
+  server:
+    password: "youshallnotpass"
+    sources:
+      youtube: true
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: true
+    filters:
+      volume: true
+      equalizer: true
+      timescale: true
+      tremolo: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    youtubePlaylistLoadLimit: 100
+    youtubeSearchEnabled: true
+logging:
+  level:
+    root: INFO
+    lavalink: DEBUG
+    dev.arbjerg.lavalink: DEBUG

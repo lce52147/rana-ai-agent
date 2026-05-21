@@ -1,0 +1,217 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "llama-cpp/OOGG"
+      },
+      "workspace": "C:\\\\Users\\\\Administrator\\\\.openclaw\\\\workspace"
+    },
+    "list": [
+      {
+        "id": "main",
+        "tools": {
+          "alsoAllow": [
+            "rana_play_music",
+            "rana_stop_music"
+          ]
+        }
+      }
+    ]
+  },
+  "channels": {
+    "discord": {
+      "allowFrom": [
+        "*"
+      ],
+      "dmPolicy": "open",
+      "enabled": true,
+      "groupPolicy": "open",
+      "token": "REPLACED_BY_SAFE_TOKEN"
+    }
+  },
+  "env": {
+    "custom-1": "",
+    "custom-2": "",
+    "vars": {
+      "Value": "C:\\Users\\Administrator\\.openclaw\\workspace\\tools\\ffmpeg\\bin\\ffmpeg.exe",
+      "key": "OPENCLAW_TOOLS_EXEC_SAFEBINPROFILES_FFMPEG"
+    }
+  },
+  "gateway": {
+    "auth": {
+      "allowTailscale": true,
+      "mode": "token",
+      "token": "REPLACED_BY_SAFE_TOKEN"
+    },
+    "bind": "loopback",
+    "mode": "local",
+    "port": 18789,
+    "remote": {
+      "url": "ws://127.0.0.1:18789"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": true
+    }
+  },
+  "meta": {
+    "lastTouchedAt": "2026-05-05T14:28:03.587Z",
+    "lastTouchedVersion": "2026.4.15"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "ollama": {
+        "api": "ollama",
+        "apiKey": "ollama-local",
+        "baseUrl": "http://127.0.0.1:11434",
+        "models": [
+          {
+            "contextWindow": 16384,
+            "cost": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "id": "gemma4:e4b",
+            "input": [
+              "text",
+              "image"
+            ],
+            "name": "gemma4:e4b",
+            "reasoning": true
+          },
+          {
+            "contextWindow": 16384,
+            "cost": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "id": "qwen3.5:9b",
+            "input": [
+              "text",
+              "image"
+            ],
+            "name": "qwen3.5:9b",
+            "reasoning": true
+          },
+          {
+            "contextWindow": 16384,
+            "cost": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "id": "hf.co/Alex01837178373/gemma-2-9b-it-abliterated-Q4_K_M-GGUF",
+            "input": [
+              "text"
+            ],
+            "name": "hf.co/Alex01837178373/gemma-2-9b-it-abliterated-Q4_K_M-GGUF"
+          },
+          {
+            "contextWindow": 32768,
+            "cost": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "id": "kimi-k2.5:cloud",
+            "input": [
+              "text",
+              "image"
+            ],
+            "name": "kimi-k2.5:cloud",
+            "reasoning": true
+          }
+        ]
+      },
+      "llama-cpp": {
+        "api": "openai-responses",
+        "apiKey": "not-needed",
+        "baseUrl": "http://127.0.0.1:6969/v1",
+        "models": [
+          {
+            "contextWindow": 32768,
+            "cost": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "id": "OOGG",
+            "input": [
+              "text"
+            ],
+            "name": "OOGG",
+            "reasoning": false
+          }
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": [
+      "discord",
+      "ollama",
+      "memory-core",
+      "brave",
+      "browser",
+      "rana-music-tools"
+    ],
+    "load": {
+      "paths": [
+        "C:\\Users\\Administrator\\.openclaw\\extensions\\rana-music-tools"
+      ]
+    },
+    "entries": {
+      "brave": {
+        "enabled": true
+      },
+      "browser": {
+        "enabled": true
+      },
+      "ollama": {
+        "enabled": true
+      },
+      "rana-music-tools": {
+        "enabled": true
+      }
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "elevated": {
+      "enabled": false
+    },
+    "exec": {
+      "safeBins": [
+        "yt-dlp",
+        "ffmpeg"
+      ],
+      "security": "full"
+    },
+    "profile": "minimal",
+    "web": {
+      "fetch": {
+        "enabled": true
+      },
+      "search": {
+        "enabled": true,
+        "provider": "ollama"
+      }
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-04-21T13:55:39.802Z",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local",
+    "lastRunVersion": "2026.4.15"
+  }
+}

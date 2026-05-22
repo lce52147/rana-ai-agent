@@ -26,7 +26,7 @@
       "dmPolicy": "open",
       "enabled": true,
       "groupPolicy": "open",
-      "token": "REPLACED_BY_SAFE_TOKEN"
+      "token": "-"
     }
   },
   "env": {

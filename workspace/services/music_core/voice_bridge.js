@@ -16,7 +16,7 @@
 require('dotenv').config();
 const http = require('http');
 const WebSocket = require('ws');
-const { Client, GatewayIntentBits, GatewayDispatchEvents } = require('discord.js');
+const { Client, GatewayIntentBits, GatewayDispatchEvents, Options } = require('discord.js');
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -61,6 +61,16 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
   ],
+  // Force a completely new gateway session on every restart.
+  // If discord.js resumes a previous session whose voice state had 4006,
+  // Discord keeps the voice restriction, so we must always start fresh.
+  makeCache: Options.cacheWithLimits({
+    ...Options.DefaultMakeCacheSettings,
+    GuildMemberManager: 0,
+    MessageManager: 0,
+  }),
+  rest: { rejectOnRateLimit: [] },
+  ws: { large_threshold: 50 },
 });
 
 client.once('clientReady', () => {
@@ -69,23 +79,41 @@ client.once('clientReady', () => {
   const guilds = [...client.guilds.cache.values()].map(g => `${g.name} (${g.id})`).join(', ');
   log('DISCORD', `Guilds: ${guilds || 'none'}`);
 
-  // On startup: force a VOICE_SERVER_UPDATE for every guild the bot is already in VC.
-  // This captures the live token+endpoint so play calls don't need to rejoin.
-  // We do this by sending OP4 join to each channel the bot is currently in.
+  // On startup: if bot is in a voice channel, just log it.
+  // Do NOT pre-fetch or cache voice tokens here — they expire within seconds
+  // and the lavalinkPlay function will get a fresh one when needed.
   setTimeout(() => {
     for (const guild of client.guilds.cache.values()) {
       const me = guild.members.cache.get(client.user.id);
       if (me && me.voice && me.voice.channelId) {
         const channelId = me.voice.channelId;
-        log('VOICE', `[STARTUP] Bot already in channel ${channelId} (guild ${guild.id}) — refreshing voice state`);
+        log('VOICE', `[STARTUP] Bot is in channel ${channelId} (guild ${guild.id}) — token will be fetched at play time`);
         guildChannels.set(guild.id, channelId);
-        client.ws.shards.first()?.send({
-          op: 4,
-          d: { guild_id: guild.id, channel_id: channelId, self_mute: false, self_deaf: true },
-        });
+        voiceStates.delete(guild.id); // ensure no stale state
       }
     }
   }, 3000);
+});
+
+// If the shard resumed a previous session, force a fresh IDENTIFY to avoid
+// carrying over voice restrictions from prior 4006 invalidations.
+client.on('shardReady', (id, unavailableGuilds) => {
+  const shard = client.ws.shards.get(id);
+  if (shard && shard.sessionId) {
+    log('DISCORD', `[SHARD] Shard ${id} ready with session ${shard.sessionId.substring(0, 16)}...`);
+  }
+});
+
+// If discord.js reconnects the shard (after VOICE-related disconnect or network issue),
+// clear all voice state so fresh tokens are fetched on the next play.
+client.on('shardReconnecting', (id) => {
+  log('DISCORD', `[SHARD] Shard ${id} reconnecting — clearing voice state cache`);
+  voiceStates.clear();
+});
+
+client.on('shardResume', (id, replayedEvents) => {
+  log('DISCORD', `[SHARD] Shard ${id} RESUMED (replayed ${replayedEvents} events) — clearing voice state to force fresh tokens`);
+  voiceStates.clear();
 });
 
 
@@ -146,16 +174,9 @@ function joinVoiceChannel(guildId, channelId) {
     const guildShard = client.ws.shards.first();
     if (!guildShard) return reject(new Error('No shard available'));
 
-    // Fast path: if we already have fresh voice credentials cached (from startup refresh
-    // or a previous successful join), use them directly without sending OP4.
-    // Sending OP4 to an already-joined channel causes Discord to skip VOICE_SERVER_UPDATE.
-    const cached = voiceStates.get(guildId);
-    if (cached && cached.token && cached.endpoint && cached.sessionId) {
-      log('VOICE', `[JOIN] Using cached voice state for guild=${guildId} (token=${cached.token.substring(0, 8)}...)`);
-      return resolve({ ...cached });
-    }
-
-    // Slow path: send OP4 join and wait for both VOICE_STATE + VOICE_SERVER events
+    // ALWAYS do disconnect-then-rejoin to force Discord to issue a fresh
+    // VOICE_SERVER_UPDATE with a new token. Voice tokens expire within seconds,
+    // so we can never reuse a cached token.
     voiceStates.delete(guildId);
     const timer = setTimeout(() => {
       voicePending.delete(guildId);
@@ -163,11 +184,16 @@ function joinVoiceChannel(guildId, channelId) {
     }, 12000);
     voicePending.set(guildId, { resolve, reject, timer });
 
-    log('VOICE', `Sent OP4: join guild=${guildId} channel=${channelId}`);
-    guildShard.send({
-      op: 4,
-      d: { guild_id: guildId, channel_id: channelId, self_mute: false, self_deaf: true },
-    });
+    // Step 1: leave current channel
+    log('VOICE', `Sending OP4 disconnect then rejoin for guild=${guildId} channel=${channelId}`);
+    guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: null, self_mute: false, self_deaf: false } });
+    
+    // Step 2: rejoin after 600ms — Discord will send VOICE_STATE + VOICE_SERVER with fresh token
+    setTimeout(() => {
+      if (!voicePending.has(guildId)) return;
+      log('VOICE', `Sent OP4: join guild=${guildId} channel=${channelId}`);
+      guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: false, self_deaf: true } });
+    }, 600);
   });
 }
 
@@ -319,9 +345,10 @@ function connectLavalink() {
             guildChannels.delete(guild);
             log('LAVALINK', `[RESET] 4014: Voice state cleared for guild=${guild}`);
           } else if (msg.code === 4006) {
-            // Session invalidated — actively reconnect without user intervention
-            log('LAVALINK', `[4006] Triggering automatic voice reconnect for guild=${guild}...`);
-            handle4006Reconnect(guild).catch(() => { }); // fire-and-forget, errors logged inside
+            // Session invalidated — log it. lavalinkPlay will reconnect on next user request.
+            // Do NOT auto-reconnect here: it causes double-PATCH race conditions.
+            log('LAVALINK', `[4006] Voice session invalidated for guild=${guild}. Next play will reconnect.`);
+            voiceStates.delete(guild); // clear stale state so next play gets fresh token
           }
         } else if (msg.type === 'TrackStartEvent') {
           log('LAVALINK', `▶️  TrackStart guild=${guild} track=${msg.track?.info?.title?.substring(0, 50) || '?'}`);
@@ -404,7 +431,16 @@ async function lavalinkPlay(guildId, channelId, streamUrl, title) {
   if (!lavalinkSessionId) throw new Error('Lavalink session not established. Is Lavalink running?');
   if (!discordReady) throw new Error('Discord bot not ready yet.');
 
-  // Step 1: Join the voice channel
+  // Step 0: Destroy stale player and wait for Lavalink to close its voice WS.
+  // After DELETE, Lavalink closes the voice WebSocket to Discord's voice server.
+  // Waiting 1.5s lets that close complete so the next OP4 join is treated as fresh.
+  try {
+    await lavalinkREST('DELETE', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
+    log('PLAY', `[DESTROY] Cleared stale player for guild=${guildId}, waiting for voice WS close...`);
+    await new Promise(r => setTimeout(r, 1500));
+  } catch (_) { /* player may not exist */ }
+
+  // Step 1: Join the voice channel — always force fresh token
   log('PLAY', `[START] guild=${guildId} channel=${channelId} title="${title || '?'}"`);
   const voiceState = await joinVoiceChannel(guildId, channelId);
   log('PLAY', `[VOICE] token=${voiceState.token?.substring(0, 8)}... endpoint=${voiceState.endpoint} session=${voiceState.sessionId}`);

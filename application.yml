@@ -27,3 +27,6 @@ logging:
     root: INFO
     lavalink: DEBUG
     dev.arbjerg.lavalink: DEBUG
+    com.sedmelluq.discord.lavaplayer: INFO
+    moe.kyokobot.koe.internal.dave: TRACE
+    moe.kyokobot.koe.internal.gateway: TRACE

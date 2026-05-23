@@ -590,11 +590,38 @@ async function syncActivePlayers() {
   for (const player of result.body) {
     const guildId = player.guildId || player.guild_id;
     if (!guildId) continue;
-    activePlayers.add(guildId);
     const channelId = player.voice?.channelId || player.voice?.channel_id;
-    if (channelId) guildChannels.set(guildId, channelId);
+    if (player.state?.connected && channelId) {
+      activePlayers.add(guildId);
+      guildChannels.set(guildId, channelId);
+    } else {
+      activePlayers.delete(guildId);
+    }
   }
   log('LAVALINK', `[SYNC] active players=${[...activePlayers].join(',') || 'none'}`);
+}
+
+async function hasConnectedPlayer(guildId, channelId) {
+  if (!lavalinkSessionId) return false;
+  const result = await lavalinkREST('GET', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
+  if (result.status === 404) {
+    activePlayers.delete(guildId);
+    return false;
+  }
+  if (result.status !== 200 || !result.body) {
+    log('LAVALINK', `[PLAYER] state unavailable guild=${guildId} HTTP ${result.status}`);
+    return false;
+  }
+  const connected = result.body.state?.connected === true;
+  const playerChannelId = result.body.voice?.channelId || result.body.voice?.channel_id;
+  const sameChannel = playerChannelId === channelId;
+  if (connected && sameChannel) {
+    activePlayers.add(guildId);
+    return true;
+  }
+  activePlayers.delete(guildId);
+  log('LAVALINK', `[PLAYER] track-only disabled guild=${guildId} connected=${connected} playerChannel=${playerChannelId || 'null'} target=${channelId}`);
+  return false;
 }
 
 /**
@@ -612,7 +639,7 @@ async function lavalinkPlay(guildId, channelId, streamUrl, title, requesterId) {
   if (!discordReady) throw new Error('Discord bot not ready yet.');
 
   const voiceChannelId = await resolveVoiceChannel(guildId, channelId, requesterId);
-  const canTryTrackOnly = guildChannels.get(guildId) === voiceChannelId && (activePlayers.has(guildId) || stayVoiceGuilds.has(guildId));
+  const canTryTrackOnly = await hasConnectedPlayer(guildId, voiceChannelId);
 
   log('PLAY', `[START] guild=${guildId} channel=${voiceChannelId} requester=${requesterId || 'unknown'} title="${title || '?'}"`);
   stayVoiceGuilds.add(guildId);

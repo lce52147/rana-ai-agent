@@ -65,6 +65,7 @@ YTDLP_OPTS: dict = {
     "socket_timeout": 20,
     "retries":        3,
     "fragment_retries": 3,
+    "js_runtimes": {"node": {}},
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -74,6 +75,8 @@ YTDLP_OPTS: dict = {
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
     },
 }
+
+PLAYLIST_LIMIT = int(os.getenv("PLAYLIST_LIMIT", "25"))
 
 # Inject cookie file if present (needed for Bilibili login-gated content)
 if os.path.isfile(_COOKIE_FILE):
@@ -167,7 +170,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 class PlayRequest(BaseModel):
     url:        str
     guild_id:   str
-    channel_id: str
+    channel_id: Optional[str] = None
+    requester_id: Optional[str] = None
     requester:  Optional[str] = "unknown"
     # Optional voice state — provided by the Discord bot's VOICE_SERVER_UPDATE event
     voice_token:    Optional[str] = None
@@ -186,10 +190,12 @@ class PlayResponse(BaseModel):
     status:     str   # "queued" | "extracted" | "error"
     title:      Optional[str] = None
     stream_url: Optional[str] = None
-    duration:   Optional[int] = None
+    duration:   Optional[float] = None
     platform:   Optional[str] = None
     thumbnail:  Optional[str] = None
     uploader:   Optional[str] = None
+    playlist_count: Optional[int] = None
+    queued_count: Optional[int] = None
     message:    Optional[str] = None
     # Surfaced to OpenClaw for Rana-character error replies
     llm_hint:   Optional[str] = None
@@ -211,10 +217,32 @@ async def _extract_info(url: str) -> dict:
     loop = asyncio.get_running_loop()
 
     def _sync_extract() -> dict:
+        source_url = url
         with yt_dlp.YoutubeDL(YTDLP_OPTS) as ydl:
-            info = ydl.extract_info(url, download=False)
+            if url.startswith("ytsearch"):
+                search_opts = {
+                    **YTDLP_OPTS,
+                    "extract_flat": "in_playlist",
+                    "playlistend": 5,
+                }
+                with yt_dlp.YoutubeDL(search_opts) as search_ydl:
+                    search_info = search_ydl.extract_info(url, download=False)
+                entries = search_info.get("entries") if search_info else None
+                first = next((entry for entry in entries or [] if entry and entry.get("_type") != "playlist"), None)
+                if not first:
+                    raise ValueError("yt-dlp search returned no playable result.")
+                source_url = first.get("webpage_url") or first.get("url") or first.get("id")
+                if source_url and not re.match(r"^https?://", source_url):
+                    source_url = f"https://www.youtube.com/watch?v={source_url}"
+
+            info = ydl.extract_info(source_url, download=False)
             if not info:
                 raise ValueError("yt-dlp returned no info for this URL.")
+            if info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
+                first = next((entry for entry in info["entries"] if entry), None)
+                if not first:
+                    raise ValueError("yt-dlp search returned no playable result.")
+                info = first
 
             # Best audio stream URL
             stream_url = info.get("url")
@@ -264,6 +292,56 @@ async def _extract_info(url: str) -> dict:
     except Exception as e:
         log.error("[yt-dlp] Unexpected error for %s: %s", url, e)
         return {"error": True, "llm_hint": f"Unexpected extraction error: {e}", "raw_error": str(e)}
+
+
+def _looks_like_playlist(url: str) -> bool:
+    return "list=" in url or "/playlist?" in url
+
+
+async def _extract_playlist(url: str, limit: int = PLAYLIST_LIMIT) -> dict:
+    loop = asyncio.get_running_loop()
+
+    def _sync_playlist() -> dict:
+        opts = {
+            **YTDLP_OPTS,
+            "noplaylist": False,
+            "extract_flat": "in_playlist",
+            "playlistend": limit,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        entries = info.get("entries") if info else None
+        urls = []
+        for entry in entries or []:
+            if not entry or entry.get("_type") == "playlist":
+                continue
+            item_url = entry.get("webpage_url") or entry.get("url") or entry.get("id")
+            if item_url and not re.match(r"^https?://", item_url):
+                item_url = f"https://www.youtube.com/watch?v={item_url}"
+            if item_url:
+                urls.append(item_url)
+        return {
+            "title": info.get("title", "Playlist") if info else "Playlist",
+            "urls": urls[:limit],
+        }
+
+    try:
+        playlist = await loop.run_in_executor(None, _sync_playlist)
+        tracks = []
+        for item_url in playlist["urls"]:
+            info = await _extract_info(item_url)
+            if not info.get("error") and info.get("stream_url"):
+                tracks.append(info)
+        if not tracks:
+            return {"error": True, "llm_hint": "Playlist had no playable tracks.", "raw_error": "empty playlist"}
+        return {
+            "playlist": True,
+            "title": playlist["title"],
+            "tracks": tracks,
+        }
+    except Exception as e:
+        log.error("[playlist] Unexpected error for %s: %s", url, e)
+        return {"error": True, "llm_hint": f"Playlist extraction failed: {e}", "raw_error": str(e)}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -387,7 +465,7 @@ async def play(req: PlayRequest):
     await ensure_voice_bridge_ready()
 
     # ── Step 1: yt-dlp extraction ──────────────────────────
-    info = await _extract_info(req.url)
+    info = await _extract_playlist(req.url) if _looks_like_playlist(req.url) else await _extract_info(req.url)
 
     if info.get("error"):
         return PlayResponse(
@@ -396,34 +474,60 @@ async def play(req: PlayRequest):
             llm_hint = info.get("llm_hint"),
         )
 
-    log.info("[EXTRACTED] '%s' | platform=%s | duration=%ss",
-             info["title"], info["platform"], info.get("duration"))
+    if info.get("playlist"):
+        log.info("[PLAYLIST] '%s' | tracks=%s", info["title"], len(info["tracks"]))
+    else:
+        log.info("[EXTRACTED] '%s' | platform=%s | duration=%ss",
+                 info["title"], info["platform"], info.get("duration"))
 
     # ── Step 2: Route through voice_bridge for VC join + Lavalink playback ──
     try:
-        async with _http_session.post(
-            f"{VOICE_BRIDGE}/voice/play",
-            json={
-                "guild_id":   req.guild_id,
-                "channel_id": req.channel_id,
+        payload = {
+            "guild_id":   req.guild_id,
+            "channel_id": req.channel_id,
+            "requester_id": req.requester_id,
+        }
+        if info.get("playlist"):
+            payload["tracks"] = [
+                {
+                    "stream_url": track["stream_url"],
+                    "title": track["title"],
+                    "requester_id": req.requester_id,
+                    "channel_id": req.channel_id,
+                }
+                for track in info["tracks"]
+            ]
+        else:
+            payload.update({
                 "stream_url": info["stream_url"],
                 "title":      info["title"],
-            },
+            })
+
+        async with _http_session.post(
+            f"{VOICE_BRIDGE}/voice/play",
+            json=payload,
             headers={"Content-Type": "application/json", "Authorization": ""},
         ) as resp:
             bridge_body = await resp.json()
             bridge_status = bridge_body.get("status", "")
 
             if resp.status == 200 and bridge_status == "playing":
-                log.info("[PLAYING] '%s' via voice_bridge", info["title"])
+                log.info("[PLAYING] '%s' via voice_bridge", bridge_body.get("title", info["title"]))
+                playlist_count = len(info["tracks"]) if info.get("playlist") else None
                 return PlayResponse(
                     status    = "queued",
-                    title     = info["title"],
-                    duration  = info.get("duration"),
-                    platform  = info.get("platform"),
-                    thumbnail = info.get("thumbnail"),
-                    uploader  = info.get("uploader"),
-                    llm_hint  = f"Now playing: {info['title']} ({info.get('platform', 'unknown')})",
+                    title     = bridge_body.get("title", info["title"]),
+                    duration  = None if info.get("playlist") else info.get("duration"),
+                    platform  = "Playlist" if info.get("playlist") else info.get("platform"),
+                    thumbnail = None if info.get("playlist") else info.get("thumbnail"),
+                    uploader  = None if info.get("playlist") else info.get("uploader"),
+                    playlist_count = playlist_count,
+                    queued_count = bridge_body.get("queued"),
+                    llm_hint  = (
+                        f"Playlist queued: {playlist_count} tracks."
+                        if info.get("playlist")
+                        else f"Now playing: {info['title']} ({info.get('platform', 'unknown')})"
+                    ),
                 )
             else:
                 # voice_bridge returned an error
@@ -432,7 +536,7 @@ async def play(req: PlayRequest):
                 return PlayResponse(
                     status     = "extracted",
                     title      = info["title"],
-                    stream_url = info["stream_url"],
+                    stream_url = None if info.get("playlist") else info["stream_url"],
                     duration   = info.get("duration"),
                     platform   = info.get("platform"),
                     thumbnail  = info.get("thumbnail"),
@@ -446,11 +550,11 @@ async def play(req: PlayRequest):
         return PlayResponse(
             status     = "extracted",
             title      = info["title"],
-            stream_url = info["stream_url"],
+            stream_url = None if info.get("playlist") else info["stream_url"],
             duration   = info.get("duration"),
-            platform   = info.get("platform"),
-            thumbnail  = info.get("thumbnail"),
-            uploader   = info.get("uploader"),
+            platform   = "Playlist" if info.get("playlist") else info.get("platform"),
+            thumbnail  = None if info.get("playlist") else info.get("thumbnail"),
+            uploader   = None if info.get("playlist") else info.get("uploader"),
             message    = "Voice bridge offline. Start voice_bridge.js.",
             llm_hint   = (
                 "Audio extracted but voice bridge is offline. "
@@ -462,11 +566,11 @@ async def play(req: PlayRequest):
         return PlayResponse(
             status     = "extracted",
             title      = info["title"],
-            stream_url = info["stream_url"],
+            stream_url = None if info.get("playlist") else info["stream_url"],
             duration   = info.get("duration"),
-            platform   = info.get("platform"),
-            thumbnail  = info.get("thumbnail"),
-            uploader   = info.get("uploader"),
+            platform   = "Playlist" if info.get("playlist") else info.get("platform"),
+            thumbnail  = None if info.get("playlist") else info.get("thumbnail"),
+            uploader   = None if info.get("playlist") else info.get("uploader"),
             message    = str(e),
             llm_hint   = f"Extraction OK but playback failed: {e}",
         )

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "fallbacks": [
+    {
+      "id": "chores",
+      "patterns": ["洗碗", "洗盤", "洗杯", "打掃", "掃地", "拖地", "倒垃圾"],
+      "reply": "不要。"
+    },
+    {
+      "id": "matcha",
+      "patterns": ["抹茶", "芭菲", "甜點", "蛋糕"],
+      "reply": "抹茶。我要。"
+    },
+    {
+      "id": "greetings",
+      "patterns": ["早安", "午安", "晚安", "嗨", "你好", "哈囉", "hello", "hi"],
+      "reply": "嗯。"
+    },
+    {
+      "id": "requests",
+      "patterns": ["幫我", "拜託", "求你", "可以", "能不能", "可不可以"],
+      "reply": "不行。"
+    }
+  ],
+  "defaultReply": "無聊。",
+  "cooldown": {
+    "enabled": true,
+    "seconds": 20
+  },
+  "reactions": [
+    {
+      "id": "rikki",
+      "patterns": ["立希", "Rikki", "rikki"],
+      "reply": "Rikki。吵。"
+    },
+    {
+      "id": "tomori",
+      "patterns": ["燈", "Tomori", "tomori"],
+      "reply": "燈。唱。"
+    },
+    {
+      "id": "anon",
+      "patterns": ["愛音", "Anon", "anon"],
+      "reply": "愛音。吵。"
+    },
+    {
+      "id": "soyo",
+      "patterns": ["爽世", "Soyo", "soyo"],
+      "reply": "爽世。麻煩。"
+    },
+    {
+      "id": "mutsumi",
+      "patterns": ["睦", "Mutsumi", "mutsumi"],
+      "reply": "睦。嗯。"
+    }
+  ],
+  "reminders": {
+    "enabled": true,
+    "reply": "嗯。記了。",
+    "listReply": "提醒。{items}"
+  },
+  "memory": {
+    "enabled": true,
+    "reply": "嗯。記住了。",
+    "recallReply": "記得。{value}"
+  },
+  "urlSummary": {
+    "enabled": true,
+    "reply": "我看。等一下。"
+  },
+  "weather": {
+    "enabled": true,
+    "defaultLocation": "Taipei"
+  },
+  "currency": {
+    "enabled": true,
+    "defaultTo": "TWD"
+  },
+  "translation": {
+    "enabled": true
+  },
+  "leprechaun": {
+    "enabled": true,
+    "root": "D:\\_Project\\Leprechaun",
+    "dashboardUrl": "http://127.0.0.1:8000/tactical_preview.html",
+    "maxSquad": 6
+  }
+}

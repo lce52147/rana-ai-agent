@@ -47,6 +47,15 @@ const voicePending = new Map();
 const guildChannels = new Map();
 // Debounce guard for 4006 reconnects: guildId → true
 const reconnecting = new Map();
+// Per-guild playback queue. Items are { stream_url, title, channel_id, requester_id }.
+const playQueues = new Map();
+const queueRunning = new Set();
+const currentTracks = new Map();
+const stayVoiceGuilds = new Set();
+const guildVolumes = new Map();
+const DEFAULT_VOLUME = 35;
+const MIN_VOLUME = 0;
+const MAX_VOLUME = 100;
 
 function log(tag, ...args) {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -59,7 +68,9 @@ function log(tag, ...args) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,       // Required to see member objects
+    GatewayIntentBits.GuildVoiceStates,   // CRITICAL for voice state updates
+    GatewayIntentBits.MessageContent,     // Required by newer Discord API versions
   ],
   // Force a completely new gateway session on every restart.
   // If discord.js resumes a previous session whose voice state had 4006,
@@ -78,6 +89,22 @@ client.once('clientReady', () => {
   log('DISCORD', `Logged in as ${client.user.tag} (${client.user.id})`);
   const guilds = [...client.guilds.cache.values()].map(g => `${g.name} (${g.id})`).join(', ');
   log('DISCORD', `Guilds: ${guilds || 'none'}`);
+
+  // Verify intents are correctly enabled
+  const requiredIntents = [
+    'Guilds',
+    'GuildVoiceStates',
+    'GuildMembers',
+    'MessageContent',
+  ];
+  const enabledIntents = client.options.intents.toArray ? client.options.intents.toArray() : [];
+  const missingIntents = requiredIntents.filter(intent => !enabledIntents.includes(intent));
+  if (missingIntents.length > 0) {
+    log('DISCORD', `⚠️  WARNING: Missing intents: ${missingIntents.join(', ')}`);
+    log('DISCORD', `    This may cause voice connection failures. Check Developer Portal settings.`);
+  } else {
+    log('DISCORD', `✅ All required intents enabled: ${enabledIntents.join(', ')}`);
+  }
 
   // On startup: if bot is in a voice channel, just log it.
   // Do NOT pre-fetch or cache voice tokens here — they expire within seconds
@@ -128,7 +155,25 @@ client.ws.on(GatewayDispatchEvents.VoiceStateUpdate, (data) => {
   if (data.user_id !== BOT_USER_ID) return;
   const guildId = data.guild_id;
   const sessionId = data.session_id;
-  log('VOICE', `State update: guild=${guildId} session=${sessionId}`);
+  const channelId = data.channel_id;
+  log('VOICE', `State update: guild=${guildId} channel=${channelId || 'null'} session=${sessionId}`);
+
+  if (channelId) {
+    guildChannels.set(guildId, channelId);
+  }
+
+  if (!channelId && stayVoiceGuilds.has(guildId)) {
+    const cachedChannelId = guildChannels.get(guildId);
+    if (cachedChannelId) {
+      log('VOICE', `[STAY] Bot left guild=${guildId}; rejoining cached channel=${cachedChannelId}`);
+      setTimeout(() => {
+        const shard = client.ws.shards.first();
+        if (shard && stayVoiceGuilds.has(guildId)) {
+          shard.send({ op: 4, d: { guild_id: guildId, channel_id: cachedChannelId, self_mute: true, self_deaf: true } });
+        }
+      }, 1000);
+    }
+  }
 
   if (!voiceStates.has(guildId)) voiceStates.set(guildId, {});
   voiceStates.get(guildId).sessionId = sessionId;
@@ -163,37 +208,63 @@ function _tryResolveVoice(guildId) {
   }
 }
 
+async function resolveVoiceChannel(guildId, channelId, requesterId) {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error(`Bot is not in guild ${guildId}`);
+
+  if (requesterId) {
+    let voiceState = guild.voiceStates.cache.get(requesterId);
+    if (!voiceState || !voiceState.channelId) {
+      try {
+        const member = await guild.members.fetch(requesterId);
+        voiceState = member.voice;
+      } catch (_) {}
+    }
+    if (voiceState && voiceState.channelId) {
+      log('VOICE', `Resolved requester=${requesterId} voice channel=${voiceState.channelId}`);
+      return voiceState.channelId;
+    }
+    throw new Error(`Requester ${requesterId} is not in a voice channel`);
+  }
+
+  const channel = guild.channels.cache.get(channelId);
+  if (!channel) throw new Error(`Channel ${channelId} not found in guild ${guildId}`);
+  if (channel.type !== 2 && channel.type !== 13) {
+    throw new Error(`Channel ${channelId} is not a voice/stage channel. Provide requester_id so Rana can join the user's current voice channel.`);
+  }
+  return channelId;
+}
+
 /**
  * Send OP 4 (voice state update) to Discord to join a voice channel.
  * Returns a promise that resolves once both VOICE_STATE + VOICE_SERVER arrive.
  */
 function joinVoiceChannel(guildId, channelId) {
-  guildChannels.set(guildId, channelId);
-
   return new Promise((resolve, reject) => {
     const guildShard = client.ws.shards.first();
     if (!guildShard) return reject(new Error('No shard available'));
 
-    // ALWAYS do disconnect-then-rejoin to force Discord to issue a fresh
-    // VOICE_SERVER_UPDATE with a new token. Voice tokens expire within seconds,
-    // so we can never reuse a cached token.
-    voiceStates.delete(guildId);
+    const cachedChannelId = guildChannels.get(guildId);
+    const cachedState = voiceStates.get(guildId);
+    const hasCompleteState = cachedState && cachedState.sessionId && cachedState.token && cachedState.endpoint;
+
+    if (cachedChannelId === channelId && hasCompleteState) {
+      log('VOICE', `Already in guild=${guildId} channel=${channelId}; reusing current voice state`);
+      return resolve({ ...cachedState });
+    }
+
+    // Join or move directly. Do not send channel_id:null before playing:
+    // that visibly leaves/rejoins the VC and can reset the Discord voice session.
+    guildChannels.set(guildId, channelId);
+    if (cachedChannelId !== channelId) voiceStates.delete(guildId);
     const timer = setTimeout(() => {
       voicePending.delete(guildId);
       reject(new Error(`Voice join timeout for guild=${guildId} channel=${channelId}`));
     }, 12000);
     voicePending.set(guildId, { resolve, reject, timer });
 
-    // Step 1: leave current channel
-    log('VOICE', `Sending OP4 disconnect then rejoin for guild=${guildId} channel=${channelId}`);
-    guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: null, self_mute: false, self_deaf: false } });
-    
-    // Step 2: rejoin after 600ms — Discord will send VOICE_STATE + VOICE_SERVER with fresh token
-    setTimeout(() => {
-      if (!voicePending.has(guildId)) return;
-      log('VOICE', `Sent OP4: join guild=${guildId} channel=${channelId}`);
-      guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: false, self_deaf: true } });
-    }, 600);
+    log('VOICE', `Sent OP4: join/move guild=${guildId} channel=${channelId}`);
+    guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: true, self_deaf: true } });
   });
 }
 
@@ -235,9 +306,14 @@ async function handle4006Reconnect(guildId) {
     const voiceState = await joinVoiceChannel(guildId, channelId);
     log('RECONNECT', `[4006] guild=${guildId} — got fresh voice state: session=${voiceState.sessionId} endpoint=${voiceState.endpoint}`);
 
-    // Strip port from endpoint (Lavalink v4 wants bare hostname)
-    let endpoint = voiceState.endpoint || '';
-    if (endpoint.includes(':')) endpoint = endpoint.split(':')[0];
+    // Keep Discord's endpoint exactly as provided. Some voice regions require
+    // the explicit port (for example :8443); stripping it can trigger 4006.
+    const endpoint = voiceState.endpoint || '';
+
+    if (!endpoint) {
+      log('RECONNECT', `[4006] guild=${guildId} ❌ Voice endpoint is empty! Cannot reconnect.`);
+      throw new Error(`Voice endpoint empty from VOICE_SERVER_UPDATE`);
+    }
 
     // Step 2: Re-PATCH Lavalink player with new voice credentials (no track change)
     const playerPath = `/v4/sessions/${lavalinkSessionId}/players/${guildId}?noReplace=true`;
@@ -270,12 +346,64 @@ async function handle4006Reconnect(guildId) {
 function leaveVoiceChannel(guildId) {
   const guildShard = client.ws.shards.first();
   if (!guildShard) return;
+  stayVoiceGuilds.delete(guildId);
   guildShard.send({
     op: 4,
-    d: { guild_id: guildId, channel_id: null, self_mute: false, self_deaf: false },
+    d: { guild_id: guildId, channel_id: null, self_mute: true, self_deaf: true },
   });
   voiceStates.delete(guildId);
+  guildChannels.delete(guildId);
   log('VOICE', `Left guild=${guildId}`);
+}
+
+async function stopPlayback(guildId) {
+  playQueues.set(guildId, []);
+  currentTracks.delete(guildId);
+  try {
+    if (lavalinkSessionId) await lavalinkREST('DELETE', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
+  } catch (err) {
+    log('PLAY', `[STOP] DELETE player failed guild=${guildId}: ${err.message}`);
+  }
+  const channelId = guildChannels.get(guildId);
+  const shard = client.ws.shards.first();
+  if (channelId && shard && stayVoiceGuilds.has(guildId)) {
+    shard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: true, self_deaf: true } });
+    log('VOICE', `[STAY] Staying in guild=${guildId} channel=${channelId} after stop`);
+  }
+}
+
+function clampVolume(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_VOLUME;
+  return Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, Math.round(numeric)));
+}
+
+function getGuildVolume(guildId) {
+  return guildVolumes.get(guildId) ?? DEFAULT_VOLUME;
+}
+
+async function setPlaybackVolume(guildId, volume) {
+  const nextVolume = clampVolume(volume);
+  guildVolumes.set(guildId, nextVolume);
+  if (lavalinkSessionId && (currentTracks.has(guildId) || stayVoiceGuilds.has(guildId))) {
+    const result = await lavalinkREST('PATCH', `/v4/sessions/${lavalinkSessionId}/players/${guildId}?noReplace=true`, {
+      volume: nextVolume,
+    });
+    if (![200, 204, 404].includes(result.status)) {
+      throw new Error(`Lavalink ${result.status}`);
+    }
+  }
+  log('VOICE', `[VOLUME] guild=${guildId} volume=${nextVolume}`);
+  return nextVolume;
+}
+
+async function joinOnly(guildId, channelId, requesterId) {
+  if (!discordReady) throw new Error('Discord bot not ready yet.');
+  const voiceChannelId = await resolveVoiceChannel(guildId, channelId, requesterId);
+  await joinVoiceChannel(guildId, voiceChannelId);
+  stayVoiceGuilds.add(guildId);
+  log('VOICE', `[JOIN] Joined guild=${guildId} channel=${voiceChannelId} requester=${requesterId || 'unknown'}`);
+  return voiceChannelId;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -344,16 +472,34 @@ function connectLavalink() {
             voiceStates.delete(guild);
             guildChannels.delete(guild);
             log('LAVALINK', `[RESET] 4014: Voice state cleared for guild=${guild}`);
-          } else if (msg.code === 4006) {
+      } else if (msg.code === 4006) {
             // Session invalidated — log it. lavalinkPlay will reconnect on next user request.
             // Do NOT auto-reconnect here: it causes double-PATCH race conditions.
             log('LAVALINK', `[4006] Voice session invalidated for guild=${guild}. Next play will reconnect.`);
+            log('LAVALINK', `[4006] DIAGNOSTIC HINT: This usually means:`);
+            log('LAVALINK', `        1. Voice endpoint/token/session mismatch`);
+            log('LAVALINK', `        2. Discord voice region requiring the endpoint port to be preserved`);
+            log('LAVALINK', `        3. Guild/channel permission or voice server restriction`);
             voiceStates.delete(guild); // clear stale state so next play gets fresh token
           }
         } else if (msg.type === 'TrackStartEvent') {
           log('LAVALINK', `▶️  TrackStart guild=${guild} track=${msg.track?.info?.title?.substring(0, 50) || '?'}`);
         } else if (msg.type === 'TrackEndEvent') {
           log('LAVALINK', `⏹  TrackEnd guild=${guild} reason=${msg.reason}`);
+          currentTracks.delete(guild);
+          if (guild && !['REPLACED', 'STOPPED'].includes(String(msg.reason || '').toUpperCase())) {
+            setTimeout(() => playNextQueued(guild), 250);
+            setTimeout(() => {
+              if ((playQueues.get(guild) || []).length === 0 && stayVoiceGuilds.has(guild)) {
+                const channelId = guildChannels.get(guild);
+                const shard = client.ws.shards.first();
+                if (channelId && shard) {
+                  log('VOICE', `[STAY] Holding guild=${guild} channel=${channelId} after track end`);
+                  shard.send({ op: 4, d: { guild_id: guild, channel_id: channelId, self_mute: true, self_deaf: true } });
+                }
+              }
+            }, 1500);
+          }
         } else {
           log('LAVALINK', `[EVENT] ${msg.type} guild=${guild}`);
         }
@@ -427,27 +573,26 @@ function lavalinkREST(method, path, body) {
  * loadtracks with the original YouTube URL returns loadType=error (broken).
  * LIVE.py always sends the extracted stream URL, so this path works.
  */
-async function lavalinkPlay(guildId, channelId, streamUrl, title) {
+async function lavalinkPlay(guildId, channelId, streamUrl, title, requesterId) {
   if (!lavalinkSessionId) throw new Error('Lavalink session not established. Is Lavalink running?');
   if (!discordReady) throw new Error('Discord bot not ready yet.');
 
-  // Step 0: Destroy stale player and wait for Lavalink to close its voice WS.
-  // After DELETE, Lavalink closes the voice WebSocket to Discord's voice server.
-  // Waiting 1.5s lets that close complete so the next OP4 join is treated as fresh.
-  try {
-    await lavalinkREST('DELETE', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
-    log('PLAY', `[DESTROY] Cleared stale player for guild=${guildId}, waiting for voice WS close...`);
-    await new Promise(r => setTimeout(r, 1500));
-  } catch (_) { /* player may not exist */ }
+  const voiceChannelId = await resolveVoiceChannel(guildId, channelId, requesterId);
 
-  // Step 1: Join the voice channel — always force fresh token
-  log('PLAY', `[START] guild=${guildId} channel=${channelId} title="${title || '?'}"`);
-  const voiceState = await joinVoiceChannel(guildId, channelId);
+  // Step 1: Join/move only when needed. If Rana is already in the requested
+  // channel, keep the existing Discord voice session stable.
+  log('PLAY', `[START] guild=${guildId} channel=${voiceChannelId} requester=${requesterId || 'unknown'} title="${title || '?'}"`);
+  const voiceState = await joinVoiceChannel(guildId, voiceChannelId);
+  stayVoiceGuilds.add(guildId);
   log('PLAY', `[VOICE] token=${voiceState.token?.substring(0, 8)}... endpoint=${voiceState.endpoint} session=${voiceState.sessionId}`);
 
-  // Discord sends endpoint as "hostname:port" — Lavalink v4 wants just the hostname
-  let endpoint = voiceState.endpoint || '';
-  if (endpoint.includes(':')) endpoint = endpoint.split(':')[0];
+  // Keep Discord's endpoint exactly as provided. Some voice regions require
+  // the explicit port (for example :8443); stripping it can trigger 4006.
+  const endpoint = voiceState.endpoint || '';
+
+  if (!endpoint) {
+    throw new Error(`Voice endpoint is empty! voiceState=${JSON.stringify(voiceState)}`);
+  }
 
   // Step 2: loadtracks with the yt-dlp stream URL
   // Lavalink's http source handles raw googlevideo URLs and returns loadType=track
@@ -481,25 +626,94 @@ async function lavalinkPlay(guildId, channelId, streamUrl, title) {
   const playerPath = `/v4/sessions/${lavalinkSessionId}/players/${guildId}?noReplace=false`;
   const combinedPatch = {
     track: trackObj,
+    volume: getGuildVolume(guildId),
     voice: {
       token: voiceState.token,
       endpoint: endpoint,
       sessionId: voiceState.sessionId,
-      channelId: channelId,           // ← Required by Lavalink v4.2.2
+      channelId: voiceChannelId,      // ← Required by Lavalink v4.2.2
     },
   };
   log('LAVALINK', `[PATCH] ${playerPath}`);
-  log('LAVALINK', `[PATCH] token=${voiceState.token?.substring(0, 8)}... endpoint=${endpoint} session=${voiceState.sessionId} channel=${channelId}`);
+  log('LAVALINK', `[PATCH] token=${voiceState.token?.substring(0, 8)}... endpoint=${endpoint} session=${voiceState.sessionId} channel=${voiceChannelId}`);
 
   log('LAVALINK', `[PATCH] Payload: ${JSON.stringify(combinedPatch).substring(0, 120)}...`);
 
   const playRes = await lavalinkREST('PATCH', playerPath, combinedPatch);
   if (playRes.status === 200 || playRes.status === 204) {
     log('LAVALINK', `[PATCH] ✅ HTTP ${playRes.status} — playback started`);
+    currentTracks.set(guildId, {
+      title: title || 'Unknown',
+      stream_url: streamUrl,
+      channel_id: voiceChannelId,
+      requester_id: requesterId,
+      started_at: Date.now(),
+    });
   } else {
     log('LAVALINK', `[PATCH] ❌ HTTP ${playRes.status}: ${JSON.stringify(playRes.body)}`);
   }
   return playRes;
+}
+
+async function playNextQueued(guildId) {
+  if (queueRunning.has(guildId)) return;
+  const queue = playQueues.get(guildId);
+  if (!queue || queue.length === 0) return;
+
+  const item = queue.shift();
+  queueRunning.add(guildId);
+  try {
+    log('QUEUE', `Next guild=${guildId} remaining=${queue.length} title="${item.title || '?'}"`);
+    await lavalinkPlay(guildId, item.channel_id, item.stream_url, item.title, item.requester_id);
+  } catch (err) {
+    log('QUEUE', `Next failed guild=${guildId}: ${err.message}`);
+    setTimeout(() => playNextQueued(guildId), 500);
+  } finally {
+    queueRunning.delete(guildId);
+  }
+}
+
+function getQueueState(guildId) {
+  const queue = playQueues.get(guildId) || [];
+  return {
+    status: currentTracks.has(guildId) ? 'playing' : queue.length ? 'queued' : 'idle',
+    current: currentTracks.get(guildId) || null,
+    next: queue[0] || null,
+    queued: queue.length,
+    volume: getGuildVolume(guildId),
+    queue: queue.map((item, index) => ({
+      index: index + 1,
+      title: item.title || 'Unknown',
+      stream_url: item.stream_url,
+    })),
+  };
+}
+
+function removeQueuedTrack(guildId, query) {
+  const queue = playQueues.get(guildId) || [];
+  const needle = String(query || '').trim().toLowerCase();
+  if (!needle) return null;
+  const index = queue.findIndex((item) => {
+    const title = String(item.title || '').toLowerCase();
+    const url = String(item.stream_url || '').toLowerCase();
+    return title.includes(needle) || url.includes(needle);
+  });
+  if (index < 0) return null;
+  const [removed] = queue.splice(index, 1);
+  playQueues.set(guildId, queue);
+  return removed;
+}
+
+async function skipCurrent(guildId) {
+  const skipped = currentTracks.get(guildId) || null;
+  currentTracks.delete(guildId);
+  try {
+    if (lavalinkSessionId) await lavalinkREST('DELETE', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
+  } catch (err) {
+    log('QUEUE', `Skip delete failed guild=${guildId}: ${err.message}`);
+  }
+  setTimeout(() => playNextQueued(guildId), 350);
+  return skipped;
 }
 
 
@@ -562,13 +776,95 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  // ── GET /diagnostics — comprehensive debug endpoint ─────────
+  if (req.method === 'GET' && req.url === '/diagnostics') {
+    const enabledIntents = client.options.intents.toArray ? client.options.intents.toArray() : [];
+    return respond(200, {
+      bridge_version: '3.0',
+      discord_bot_id: BOT_USER_ID,
+      discord_ready: discordReady,
+      discord_user: discordReady ? `${client.user.tag} (${client.user.id})` : null,
+      discord_intents: enabledIntents,
+      lavalink_session_id: lavalinkSessionId,
+      lavalink_connection: lavalinkWs ? lavalinkWs.readyState : 'disconnected',
+      guilds_count: discordReady ? client.guilds.cache.size : 0,
+      voice_states_cache_size: voiceStates.size,
+      reconnecting_guilds: [...reconnecting.keys()],
+      pending_voice_joins: [...voicePending.keys()],
+    });
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/voice/queue')) {
+    const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
+    const guildId = url.searchParams.get('guild_id');
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    log('HTTP', `GET /voice/queue guild=${guildId} state=${JSON.stringify(getQueueState(guildId)).slice(0, 240)}`);
+    return respond(200, getQueueState(guildId));
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/skip') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    log('HTTP', `POST /voice/skip guild=${guildId} query="${body.query || ''}" before=${JSON.stringify(getQueueState(guildId)).slice(0, 240)}`);
+
+    if (body.query) {
+      const removed = removeQueuedTrack(guildId, body.query);
+      if (removed) return respond(200, { ...getQueueState(guildId), status: 'removed', removed });
+    }
+
+    const skipped = await skipCurrent(guildId);
+    return respond(200, { ...getQueueState(guildId), status: skipped ? 'skipped' : 'idle', skipped });
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/stop') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    log('HTTP', `POST /voice/stop guild=${guildId} before=${JSON.stringify(getQueueState(guildId)).slice(0, 240)}`);
+    await stopPlayback(guildId);
+    return respond(200, { ...getQueueState(guildId), status: 'stopped', guild_id: guildId, stay: stayVoiceGuilds.has(guildId) });
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/volume') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    log('HTTP', `POST /voice/volume guild=${guildId} volume=${body.volume ?? ''} delta=${body.delta ?? ''}`);
+    try {
+      const current = getGuildVolume(guildId);
+      const requested = body.delta == null ? body.volume : current + Number(body.delta);
+      const volume = await setPlaybackVolume(guildId, requested);
+      return respond(200, { ...getQueueState(guildId), status: 'volume', guild_id: guildId, volume });
+    } catch (err) {
+      log('VOICE', `[VOLUME] ERROR: ${err.message}`);
+      return respond(500, { status: 'error', message: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/join') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    log('HTTP', `POST /voice/join guild=${guildId} requester=${body.requester_id || ''} channel=${body.channel_id || ''}`);
+    try {
+      const channelId = await joinOnly(guildId, body.channel_id, body.requester_id);
+      return respond(200, { ...getQueueState(guildId), status: 'joined', guild_id: guildId, channel_id: channelId, stay: true });
+    } catch (err) {
+      log('VOICE', `[JOIN] ERROR: ${err.message}`);
+      return respond(500, { status: 'error', message: err.message });
+    }
+  }
+
   // ── POST /voice/play ──────────────────────────────────────
   if (req.method === 'POST' && req.url === '/voice/play') {
     const body = await parseBody(req);
-    const { guild_id, channel_id, stream_url, title } = body;
+    const { guild_id, channel_id, requester_id, stream_url, title } = body;
+    const tracks = Array.isArray(body.tracks) ? body.tracks : null;
+    log('HTTP', `POST /voice/play guild=${guild_id || ''} requester=${requester_id || ''} title="${title || ''}" tracks=${tracks ? tracks.length : 0} before=${guild_id ? JSON.stringify(getQueueState(guild_id)).slice(0, 240) : '{}'}`);
 
-    if (!guild_id || !channel_id || !stream_url) {
-      return respond(400, { error: 'Missing guild_id, channel_id, or stream_url' });
+    if (!guild_id || (!stream_url && (!tracks || tracks.length === 0))) {
+      return respond(400, { error: 'Missing guild_id or stream_url' });
     }
     if (!lavalinkSessionId) {
       return respond(503, { error: 'Lavalink session not established. Is Lavalink running?' });
@@ -578,14 +874,33 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      const result = await lavalinkPlay(guild_id, channel_id, stream_url, title);
+      let first = { stream_url, title, channel_id, requester_id };
+      if (tracks && tracks.length > 0) {
+        const normalized = tracks
+          .filter(t => t && t.stream_url)
+          .map(t => ({
+            stream_url: t.stream_url,
+            title: t.title || 'Unknown',
+            channel_id: t.channel_id || channel_id,
+            requester_id: t.requester_id || requester_id,
+          }));
+        if (normalized.length === 0) return respond(400, { error: 'Playlist had no playable tracks' });
+        first = normalized[0];
+        playQueues.set(guild_id, normalized.slice(1));
+        log('QUEUE', `Loaded playlist guild=${guild_id} total=${normalized.length} queued=${Math.max(0, normalized.length - 1)}`);
+      } else {
+        playQueues.set(guild_id, []);
+      }
+
+      const result = await lavalinkPlay(guild_id, first.channel_id, first.stream_url, first.title, first.requester_id);
       if (result.status === 200 || result.status === 204) {
-        log('PLAY', `✅ SUCCESS: "${title}"`);
+        log('PLAY', `✅ SUCCESS: "${first.title}"`);
         return respond(200, {
           status: 'playing',
           guild_id,
-          title: title || 'Unknown',
+          title: first.title || 'Unknown',
           session: lavalinkSessionId,
+          queued: playQueues.get(guild_id)?.length || 0,
         });
       } else {
         log('PLAY', `❌ LAVALINK_ERROR ${result.status}: ${JSON.stringify(result.body)}`);
@@ -600,6 +915,9 @@ const server = http.createServer(async (req, res) => {
   // ── POST /voice/leave ─────────────────────────────────────
   if (req.method === 'POST' && req.url === '/voice/leave') {
     const body = await parseBody(req);
+    log('HTTP', `POST /voice/leave guild=${body.guild_id || ''} before=${body.guild_id ? JSON.stringify(getQueueState(body.guild_id)).slice(0, 240) : '{}'}`);
+    playQueues.set(body.guild_id, []);
+    currentTracks.delete(body.guild_id);
     leaveVoiceChannel(body.guild_id);
     return respond(200, { status: 'left', guild_id: body.guild_id });
   }
@@ -613,6 +931,13 @@ const server = http.createServer(async (req, res) => {
 log('BOOT', 'Rana Voice Bridge v3.0 starting...');
 log('BOOT', `Lavalink: ${LAVALINK_HOST}:${LAVALINK_PORT}`);
 log('BOOT', `Bridge port: ${BRIDGE_PORT}`);
+log('BOOT', `Bot ID: ${BOT_USER_ID}`);
+log('BOOT', 'IMPORTANT: Verify in Discord Developer Portal:');
+log('BOOT', `  → https://discord.com/developers/applications/${BOT_USER_ID}/bot`);
+log('BOOT', '  Ensure these intents are ENABLED:');
+log('BOOT', '    ✓ Guilds');
+log('BOOT', '    ✓ Guild Members');
+log('BOOT', '    ✓ Message Content Intent (if text commands needed)');
 
 // Connect Lavalink WS first (fast)
 connectLavalink();
@@ -633,6 +958,8 @@ server.listen(BRIDGE_PORT, '127.0.0.1', () => {
   log('BRIDGE', `HTTP API on http://127.0.0.1:${BRIDGE_PORT}`);
   log('BRIDGE', `  GET  /health`);
   log('BRIDGE', `  GET  /init`);
+  log('BRIDGE', `  GET  /diagnostics  ← Use this for debugging voice issues`);
+  log('BRIDGE', `  GET  /guilds`);
   log('BRIDGE', `  POST /voice/play   { guild_id, channel_id, stream_url, title }`);
   log('BRIDGE', `  POST /voice/leave  { guild_id }`);
 });

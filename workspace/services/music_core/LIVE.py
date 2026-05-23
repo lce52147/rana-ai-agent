@@ -21,6 +21,8 @@ import asyncio
 import logging
 import os
 import re
+import secrets
+import time
 import traceback
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -28,7 +30,7 @@ from typing import Optional
 import aiohttp
 import yt_dlp
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator
 
 # ─────────────────────────────────────────────────────────────
@@ -49,6 +51,8 @@ LAVALINK_PASS  = os.getenv("LAVALINK_PASS", "youshallnotpass")
 DISCORD_BOT_ID = os.getenv("DISCORD_BOT_ID", "")
 VOICE_BRIDGE   = os.getenv("VOICE_BRIDGE", "http://127.0.0.1:8081")
 LIVE_VERSION   = "1.2.0"
+MEDIA_PROXY_BASE = os.getenv("MEDIA_PROXY_BASE", "http://127.0.0.1:8080")
+MEDIA_PROXY_TTL_SECONDS = int(os.getenv("MEDIA_PROXY_TTL_SECONDS", "7200"))
 
 # ─────────────────────────────────────────────────────────────
 # yt-dlp Options — extraction only, no disk I/O
@@ -88,6 +92,7 @@ if os.path.isfile(_COOKIE_FILE):
 # ─────────────────────────────────────────────────────────────
 _http_session: Optional[aiohttp.ClientSession] = None
 _voice_bridge_init_checked: bool = False
+_media_proxy: dict[str, dict] = {}
 
 
 async def ensure_voice_bridge_ready():
@@ -138,6 +143,103 @@ app = FastAPI(
     description="yt-dlp + Lavalink v4 bridge for Rana Discord bot. Zero VRAM.",
     lifespan=lifespan,
 )
+
+
+def _is_bilibili_media_url(url: str) -> bool:
+    lowered = (url or "").lower()
+    return "bilivideo.com" in lowered or "akamaized.net/upgcxcode" in lowered or "/upgcxcode/" in lowered
+
+
+def _media_headers(headers: Optional[dict], source_url: str) -> dict:
+    merged = dict(YTDLP_OPTS.get("http_headers") or {})
+    merged.update(headers or {})
+    if _is_bilibili_media_url(source_url):
+        merged.setdefault("Referer", "https://www.bilibili.com/")
+        merged.setdefault("Origin", "https://www.bilibili.com")
+        merged.setdefault("Accept", "*/*")
+    merged.pop("Accept-Encoding", None)
+    merged.pop("Host", None)
+    return merged
+
+
+def _cleanup_media_proxy() -> None:
+    now = time.time()
+    expired = [token for token, entry in _media_proxy.items() if entry.get("expires_at", 0) < now]
+    for token in expired:
+        _media_proxy.pop(token, None)
+
+
+def _register_media_proxy(stream_url: str, headers: Optional[dict]) -> str:
+    _cleanup_media_proxy()
+    token = secrets.token_urlsafe(18)
+    _media_proxy[token] = {
+        "url": stream_url,
+        "headers": _media_headers(headers, stream_url),
+        "expires_at": time.time() + MEDIA_PROXY_TTL_SECONDS,
+    }
+    return f"{MEDIA_PROXY_BASE.rstrip('/')}/media-proxy/{token}"
+
+
+def _prepare_stream_for_lavalink(info: dict) -> dict:
+    stream_url = info.get("stream_url") or ""
+    platform = (info.get("platform") or "").lower()
+    if stream_url and (_is_bilibili_media_url(stream_url) or "bili" in platform):
+        info["direct_stream_url"] = stream_url
+        info["stream_url"] = _register_media_proxy(stream_url, info.get("stream_headers"))
+        log.info("[media-proxy] Bilibili stream proxied for '%s'", info.get("title", "Unknown"))
+    return info
+
+
+@app.api_route("/media-proxy/{token}", methods=["GET", "HEAD"])
+async def media_proxy(token: str, request: Request):
+    entry = _media_proxy.get(token)
+    if not entry or entry.get("expires_at", 0) < time.time():
+        _media_proxy.pop(token, None)
+        return JSONResponse(status_code=404, content={"error": "media proxy expired"})
+
+    headers = dict(entry["headers"])
+    if request.headers.get("range"):
+        headers["Range"] = request.headers["range"]
+
+    session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=30))
+    try:
+        remote = await session.request(
+            "GET",
+            entry["url"],
+            headers=headers,
+            allow_redirects=True,
+        )
+    except Exception as exc:
+        await session.close()
+        return JSONResponse(status_code=502, content={"error": f"media proxy fetch failed: {exc}"})
+
+    response_headers = {}
+    for key in ("Content-Length", "Content-Range", "Accept-Ranges", "Cache-Control", "Last-Modified", "ETag"):
+        if remote.headers.get(key):
+            response_headers[key] = remote.headers[key]
+    content_type = remote.headers.get("Content-Type") or "audio/mp4"
+    response_headers["Content-Type"] = content_type
+
+    if request.method == "HEAD":
+        remote.release()
+        await session.close()
+        return Response(status_code=remote.status, headers=response_headers)
+
+    if remote.status >= 400:
+        text = await remote.text()
+        remote.release()
+        await session.close()
+        return JSONResponse(status_code=remote.status, content={"error": text[:300] or f"HTTP {remote.status}"})
+
+    async def body_iter():
+        try:
+            async for chunk in remote.content.iter_chunked(64 * 1024):
+                yield chunk
+        finally:
+            remote.release()
+            await session.close()
+
+    return StreamingResponse(body_iter(), status_code=remote.status, headers=response_headers, media_type=content_type)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -246,18 +348,27 @@ async def _extract_info(url: str) -> dict:
 
             # Best audio stream URL
             stream_url = info.get("url")
+            selected_format = None
             if not stream_url and info.get("formats"):
                 # Walk formats in reverse (best quality last) and grab first with url
                 for fmt in reversed(info["formats"]):
                     if fmt.get("url") and fmt.get("vcodec") == "none":
                         stream_url = fmt["url"]
+                        selected_format = fmt
                         break
                 if not stream_url:
-                    stream_url = info["formats"][-1].get("url", "")
+                    selected_format = info["formats"][-1]
+                    stream_url = selected_format.get("url", "")
+
+            stream_headers = {}
+            stream_headers.update(info.get("http_headers") or {})
+            if selected_format:
+                stream_headers.update(selected_format.get("http_headers") or {})
 
             return {
                 "title":      info.get("title", "Unknown"),
                 "stream_url": stream_url,
+                "stream_headers": stream_headers,
                 "duration":   info.get("duration"),
                 "platform":   info.get("extractor_key", "unknown"),
                 "thumbnail":  info.get("thumbnail"),
@@ -265,7 +376,7 @@ async def _extract_info(url: str) -> dict:
             }
 
     try:
-        return await loop.run_in_executor(None, _sync_extract)
+        return _prepare_stream_for_lavalink(await loop.run_in_executor(None, _sync_extract))
 
     except yt_dlp.utils.DownloadError as e:
         raw = re.sub(r'\x1b\[[0-9;]*m', '', str(e))   # strip ANSI color codes

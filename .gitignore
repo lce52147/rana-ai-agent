@@ -1,0 +1,16 @@
+# Local runtime logs
+*.log
+*.err.log
+
+# Python/generated caches
+__pycache__/
+*.py[cod]
+
+# OpenClaw local runtime state
+agents/main/sessions/*.jsonl
+agents/main/sessions/*.checkpoint.*
+agents/main/sessions/*.deleted.*
+agents/main/sessions/*.reset.*
+workspace/services/rana_hot_tools/memory.json
+workspace/services/rana_hot_tools/monitors.json
+workspace/services/rana_hot_tools/reminders.json

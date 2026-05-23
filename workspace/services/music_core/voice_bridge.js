@@ -874,22 +874,35 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      let first = { stream_url, title, channel_id, requester_id };
-      if (tracks && tracks.length > 0) {
-        const normalized = tracks
-          .filter(t => t && t.stream_url)
-          .map(t => ({
-            stream_url: t.stream_url,
-            title: t.title || 'Unknown',
-            channel_id: t.channel_id || channel_id,
-            requester_id: t.requester_id || requester_id,
-          }));
-        if (normalized.length === 0) return respond(400, { error: 'Playlist had no playable tracks' });
-        first = normalized[0];
-        playQueues.set(guild_id, normalized.slice(1));
-        log('QUEUE', `Loaded playlist guild=${guild_id} total=${normalized.length} queued=${Math.max(0, normalized.length - 1)}`);
-      } else {
-        playQueues.set(guild_id, []);
+      const incoming = (tracks && tracks.length > 0 ? tracks : [{ stream_url, title, channel_id, requester_id }])
+        .filter(t => t && t.stream_url)
+        .map(t => ({
+          stream_url: t.stream_url,
+          title: t.title || 'Unknown',
+          channel_id: t.channel_id || channel_id,
+          requester_id: t.requester_id || requester_id,
+        }));
+      if (incoming.length === 0) return respond(400, { error: 'Playlist had no playable tracks' });
+
+      const queue = playQueues.get(guild_id) || [];
+      if (currentTracks.has(guild_id) || queueRunning.has(guild_id)) {
+        queue.push(...incoming);
+        playQueues.set(guild_id, queue);
+        log('QUEUE', `Enqueued guild=${guild_id} added=${incoming.length} queued=${queue.length} first="${incoming[0].title || '?'}"`);
+        return respond(200, {
+          ...getQueueState(guild_id),
+          status: 'queued',
+          guild_id,
+          title: incoming[0].title || 'Unknown',
+          added: incoming.length,
+          queued: queue.length,
+        });
+      }
+
+      const first = incoming[0];
+      playQueues.set(guild_id, incoming.slice(1));
+      if (incoming.length > 1) {
+        log('QUEUE', `Loaded playlist guild=${guild_id} total=${incoming.length} queued=${incoming.length - 1}`);
       }
 
       const result = await lavalinkPlay(guild_id, first.channel_id, first.stream_url, first.title, first.requester_id);

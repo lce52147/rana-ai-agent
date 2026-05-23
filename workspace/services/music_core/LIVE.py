@@ -511,9 +511,10 @@ async def play(req: PlayRequest):
             bridge_body = await resp.json()
             bridge_status = bridge_body.get("status", "")
 
-            if resp.status == 200 and bridge_status == "playing":
-                log.info("[PLAYING] '%s' via voice_bridge", bridge_body.get("title", info["title"]))
+            if resp.status == 200 and bridge_status in ("playing", "queued"):
+                log.info("[%s] '%s' via voice_bridge", bridge_status.upper(), bridge_body.get("title", info["title"]))
                 playlist_count = len(info["tracks"]) if info.get("playlist") else None
+                queued_count = bridge_body.get("queued")
                 return PlayResponse(
                     status    = "queued",
                     title     = bridge_body.get("title", info["title"]),
@@ -522,11 +523,15 @@ async def play(req: PlayRequest):
                     thumbnail = None if info.get("playlist") else info.get("thumbnail"),
                     uploader  = None if info.get("playlist") else info.get("uploader"),
                     playlist_count = playlist_count,
-                    queued_count = bridge_body.get("queued"),
+                    queued_count = queued_count,
                     llm_hint  = (
-                        f"Playlist queued: {playlist_count} tracks."
+                        f"Playlist queued: {playlist_count} tracks. Queue size: {queued_count}."
                         if info.get("playlist")
-                        else f"Now playing: {info['title']} ({info.get('platform', 'unknown')})"
+                        else (
+                            f"Queued: {info['title']} (queue size: {queued_count})"
+                            if bridge_status == "queued"
+                            else f"Now playing: {info['title']} ({info.get('platform', 'unknown')})"
+                        )
                     ),
                 )
             else:

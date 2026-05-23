@@ -124,6 +124,18 @@ function ranaPlaylistOk(count) {
   return `嗯。${count}首。彈了。`;
 }
 
+function ranaQueuedOk(title, queuedCount) {
+  const count = Number(queuedCount || 0);
+  if (count <= 1) return `嗯。${title}。排了。下一首。`;
+  return `嗯。${title}。排了。隊列${count}首。`;
+}
+
+function ranaPlaylistQueuedOk(playlistCount, queuedCount) {
+  const total = Number(playlistCount || 0);
+  const queued = Number(queuedCount || 0);
+  return `嗯。${total}首。排了。隊列${queued}首。`;
+}
+
 function ranaError(message) {
   return `不行。${message || "這個放不了。"}`;
 }
@@ -350,9 +362,13 @@ const plugin = {
         });
         const title = firstText(data?.title) || parsed.display;
         const playlistCount = Number(data?.playlist_count || 0);
+        const queuedCount = Number(data?.queued_count || 0);
+        const wasQueuedBehindCurrent = playlistCount > 1 ? queuedCount >= playlistCount : queuedCount > 0;
         return {
           handled: true,
-          text: playlistCount > 1 ? ranaPlaylistOk(playlistCount) : ranaOk(title),
+          text: playlistCount > 1
+            ? (wasQueuedBehindCurrent ? ranaPlaylistQueuedOk(playlistCount, queuedCount) : ranaPlaylistOk(playlistCount))
+            : (wasQueuedBehindCurrent ? ranaQueuedOk(title, queuedCount) : ranaOk(title)),
         };
       } catch (err) {
         return {

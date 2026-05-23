@@ -16,7 +16,16 @@
 require('dotenv').config();
 const http = require('http');
 const WebSocket = require('ws');
-const { Client, GatewayIntentBits, GatewayDispatchEvents, Options } = require('discord.js');
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Client,
+  EmbedBuilder,
+  GatewayIntentBits,
+  GatewayDispatchEvents,
+  Options,
+} = require('discord.js');
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -53,6 +62,7 @@ const queueRunning = new Set();
 const currentTracks = new Map();
 const activePlayers = new Set();
 const stayVoiceGuilds = new Set();
+const queuePanels = new Map();
 const guildVolumes = new Map();
 const DEFAULT_VOLUME = 35;
 const MIN_VOLUME = 0;
@@ -149,6 +159,12 @@ client.on('shardResume', (id, replayedEvents) => {
 
 client.on('error', (err) => {
   log('DISCORD', `Error: ${err.message}`);
+});
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton?.()) return;
+  if (!String(interaction.customId || '').startsWith('rana_queue|')) return;
+  await handleQueueButton(interaction);
 });
 
 // Intercept raw WS packets from Discord for VOICE_STATE_UPDATE + VOICE_SERVER_UPDATE
@@ -594,6 +610,15 @@ async function syncActivePlayers() {
     if (player.state?.connected && channelId) {
       activePlayers.add(guildId);
       guildChannels.set(guildId, channelId);
+      if (!currentTracks.has(guildId) && player.track) {
+        currentTracks.set(guildId, {
+          title: player.track.info?.title || 'Unknown',
+          stream_url: player.track.info?.uri || player.track.userData?.identifier || '',
+          channel_id: channelId,
+          requester_id: null,
+          started_at: Date.now(),
+        });
+      }
     } else {
       activePlayers.delete(guildId);
     }
@@ -769,6 +794,131 @@ function getQueueState(guildId) {
   };
 }
 
+function textQualityScore(text) {
+  const source = String(text || '');
+  const useful = (source.match(/[\u3040-\u30ff\u3400-\u9fff\w]/g) || []).length;
+  const mojibake = (source.match(/[ÃÂâäåæçèéï�]/g) || []).length;
+  return useful - mojibake * 4;
+}
+
+function repairDisplayText(value) {
+  const original = String(value || '').trim();
+  if (!original) return '';
+  let best = original;
+  let bestScore = textQualityScore(best);
+  const candidates = [Buffer.from(original, 'latin1').toString('utf8')];
+  candidates.push(Buffer.from(candidates[0], 'latin1').toString('utf8'));
+  for (const candidate of candidates) {
+    const score = textQualityScore(candidate);
+    if (score > bestScore + 2) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function shortText(value, max = 90) {
+  const text = repairDisplayText(value).replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text || 'Unknown';
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function queuePanelPayload(guildId) {
+  const state = getQueueState(guildId);
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+  const currentTitle = state.current?.title ? shortText(state.current.title, 220) : '沒有在播。';
+  const nextTitle = state.next?.title ? shortText(state.next.title, 220) : '後面沒有。';
+  const queueLines = queue.slice(0, 10).map((item) => `${item.index}. ${shortText(item.title, 72)}`);
+  const hiddenCount = Math.max(0, queue.length - queueLines.length);
+  if (hiddenCount > 0) queueLines.push(`…還有 ${hiddenCount} 首。`);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x7fd6a4)
+    .setTitle('樂奈的歌單')
+    .addFields(
+      { name: '正在播', value: currentTitle, inline: false },
+      { name: '下一首', value: nextTitle, inline: false },
+      { name: `後面 (${queue.length})`, value: queueLines.join('\n') || '沒有。', inline: false },
+    )
+    .setFooter({ text: `音量 ${state.volume ?? DEFAULT_VOLUME}｜更新 ${new Date().toLocaleTimeString('zh-TW', { hour12: false })}` });
+
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`rana_queue|refresh|${guildId}`).setLabel('再看').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`rana_queue|skip|${guildId}`).setLabel('跳過').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`rana_queue|remove_next|${guildId}`).setLabel('拿掉下一首').setStyle(ButtonStyle.Secondary).setDisabled(queue.length === 0),
+  );
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`rana_queue|vol_down|${guildId}`).setLabel('小聲').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`rana_queue|vol_up|${guildId}`).setLabel('大聲').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`rana_queue|stop|${guildId}`).setLabel('停下').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`rana_queue|leave|${guildId}`).setLabel('出去').setStyle(ButtonStyle.Danger),
+  );
+
+  return { embeds: [embed], components: [row1, row2] };
+}
+
+async function publishQueuePanel(guildId, textChannelId) {
+  if (!discordReady) throw new Error('Discord bot not ready yet.');
+  if (!textChannelId) throw new Error('Missing text_channel_id');
+
+  const channel = await client.channels.fetch(textChannelId);
+  if (!channel || typeof channel.send !== 'function') {
+    throw new Error(`Channel ${textChannelId} is not a text channel`);
+  }
+
+  const key = `${guildId}:${textChannelId}`;
+  const payload = queuePanelPayload(guildId);
+  const cached = queuePanels.get(key);
+  if (cached?.messageId && channel.messages?.fetch) {
+    try {
+      const message = await channel.messages.fetch(cached.messageId);
+      await message.edit(payload);
+      return { message_id: message.id, updated: true };
+    } catch (err) {
+      log('QUEUE_UI', `Cached panel edit failed, sending a new one: ${err.message}`);
+    }
+  }
+
+  const message = await channel.send(payload);
+  queuePanels.set(key, { channelId: textChannelId, messageId: message.id });
+  return { message_id: message.id, updated: false };
+}
+
+async function handleQueueButton(interaction) {
+  const [scope, action, guildId] = String(interaction.customId || '').split('|');
+  if (scope !== 'rana_queue' || !guildId) return;
+
+  try {
+    if (action === 'skip') {
+      await skipCurrent(guildId);
+      await new Promise(resolve => setTimeout(resolve, 600));
+    } else if (action === 'remove_next') {
+      const queue = playQueues.get(guildId) || [];
+      queue.shift();
+      playQueues.set(guildId, queue);
+    } else if (action === 'vol_down') {
+      await setPlaybackVolume(guildId, getGuildVolume(guildId) - 10);
+    } else if (action === 'vol_up') {
+      await setPlaybackVolume(guildId, getGuildVolume(guildId) + 10);
+    } else if (action === 'stop') {
+      await stopPlayback(guildId);
+    } else if (action === 'leave') {
+      playQueues.set(guildId, []);
+      currentTracks.delete(guildId);
+      activePlayers.delete(guildId);
+      leaveVoiceChannel(guildId);
+    }
+
+    await interaction.update(queuePanelPayload(guildId));
+  } catch (err) {
+    log('QUEUE_UI', `Button ${action} failed guild=${guildId}: ${err.message}`);
+    const reply = { content: `不行。${err.message || '怪。'}`, ephemeral: true };
+    if (interaction.deferred || interaction.replied) await interaction.followUp(reply);
+    else await interaction.reply(reply);
+  }
+}
+
 function removeQueuedTrack(guildId, query) {
   const queue = playQueues.get(guildId) || [];
   const needle = String(query || '').trim().toLowerCase();
@@ -881,6 +1031,47 @@ const server = http.createServer(async (req, res) => {
     if (!guildId) return respond(400, { error: 'Missing guild_id' });
     log('HTTP', `GET /voice/queue guild=${guildId} state=${JSON.stringify(getQueueState(guildId)).slice(0, 240)}`);
     return respond(200, getQueueState(guildId));
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/queue-panel') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    const textChannelId = body.text_channel_id;
+    if (!guildId || !textChannelId) return respond(400, { error: 'Missing guild_id or text_channel_id' });
+    log('HTTP', `POST /voice/queue-panel guild=${guildId} text_channel=${textChannelId}`);
+    try {
+      const panel = await publishQueuePanel(guildId, textChannelId);
+      return respond(200, { ...getQueueState(guildId), status: 'panel', ...panel });
+    } catch (err) {
+      log('QUEUE_UI', `Panel failed guild=${guildId}: ${err.message}`);
+      return respond(500, { status: 'error', message: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/queue/import') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId || !Array.isArray(body.queue)) return respond(400, { error: 'Missing guild_id or queue' });
+    const restored = body.queue
+      .filter(item => item && item.stream_url)
+      .map(item => ({
+        stream_url: item.stream_url,
+        title: repairDisplayText(item.title) || 'Unknown',
+        channel_id: item.channel_id || body.channel_id || guildChannels.get(guildId) || null,
+        requester_id: item.requester_id || body.requester_id || null,
+      }));
+    playQueues.set(guildId, restored);
+    if (body.current?.title || body.current?.stream_url) {
+      currentTracks.set(guildId, {
+        title: repairDisplayText(body.current.title) || 'Unknown',
+        stream_url: body.current.stream_url || '',
+        channel_id: body.current.channel_id || body.channel_id || guildChannels.get(guildId) || null,
+        requester_id: body.current.requester_id || body.requester_id || null,
+        started_at: body.current.started_at || Date.now(),
+      });
+    }
+    log('QUEUE', `Imported guild=${guildId} queued=${restored.length} current=${currentTracks.has(guildId)}`);
+    return respond(200, { ...getQueueState(guildId), status: 'imported', imported: restored.length });
   }
 
   if (req.method === 'POST' && req.url === '/voice/skip') {
@@ -1055,6 +1246,7 @@ server.listen(BRIDGE_PORT, '127.0.0.1', () => {
   log('BRIDGE', `  GET  /init`);
   log('BRIDGE', `  GET  /diagnostics  ← Use this for debugging voice issues`);
   log('BRIDGE', `  GET  /guilds`);
+  log('BRIDGE', `  POST /voice/queue-panel { guild_id, text_channel_id }`);
   log('BRIDGE', `  POST /voice/play   { guild_id, channel_id, stream_url, title }`);
   log('BRIDGE', `  POST /voice/leave  { guild_id }`);
 });

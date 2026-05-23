@@ -3,6 +3,7 @@ const PLAY_API_URL = "http://127.0.0.1:8080/api/play";
 const VOICE_BASE_URL = "http://127.0.0.1:8081";
 const HOT_TOOLS_URL = "http://127.0.0.1:8091";
 const DEFAULT_GUILD_ID = "1486679037605842944";
+const DEFAULT_TEXT_CHANNEL_ID = "1495319712370917396";
 const URL_RE = /https?:\/\/\S+/i;
 const AUDIO_URL_RE = /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|music\.youtube\.com|bilibili\.com|b23\.tv|soundcloud\.com)\/\S+/i;
 const PLAY_COMMAND_RE = /(?:^|\s)(?:@?rana\s*)?(?:(?:play|p)\s+|(?:播放|撥放|放歌|點歌|放|播)\s*)(.+)/i;
@@ -165,6 +166,30 @@ function resolveBaseUrl(api) {
   return DEFAULT_BASE_URL;
 }
 
+function resolveTextChannelId(event, ctx) {
+  const candidates = [
+    event?.textChannelId,
+    event?.channelId,
+    event?.channel_id,
+    event?.discord?.channelId,
+    event?.channel?.id,
+    event?.metadata?.channelId,
+    event?.to,
+    event?.sessionKey,
+    ctx?.textChannelId,
+    ctx?.channelId,
+    ctx?.to,
+    ctx?.sessionKey,
+  ];
+  for (const value of candidates) {
+    const text = firstText(value);
+    if (/^\d{17,20}$/.test(text)) return text;
+    const match = text.match(/(?:channel:|channel\/|channels\/)(\d{17,20})/i);
+    if (match) return match[1];
+  }
+  return DEFAULT_TEXT_CHANNEL_ID;
+}
+
 async function postJson(url, body, signal) {
   const res = await fetch(url, {
     method: "POST",
@@ -273,8 +298,12 @@ const plugin = {
         routeLog(control.kind, routeText, control.query ? `query="${compactText(control.query)}"` : "");
         try {
           if (control.kind === "queue") {
-            const data = await getJson(`${VOICE_BASE_URL}/voice/queue?guild_id=${encodeURIComponent(DEFAULT_GUILD_ID)}`);
-            return { handled: true, text: formatQueue(data) };
+            const textChannelId = resolveTextChannelId(event, ctx);
+            await postJson(`${VOICE_BASE_URL}/voice/queue-panel`, {
+              guild_id: DEFAULT_GUILD_ID,
+              text_channel_id: textChannelId,
+            });
+            return { handled: true, text: "嗯。歌單。" };
           }
           if (control.kind === "next") {
             const data = await getJson(`${VOICE_BASE_URL}/voice/queue?guild_id=${encodeURIComponent(DEFAULT_GUILD_ID)}`);

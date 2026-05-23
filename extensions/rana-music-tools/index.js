@@ -4,8 +4,9 @@ const VOICE_BASE_URL = "http://127.0.0.1:8081";
 const HOT_TOOLS_URL = "http://127.0.0.1:8091";
 const DEFAULT_GUILD_ID = "1486679037605842944";
 const URL_RE = /https?:\/\/\S+/i;
-const PLAY_COMMAND_RE = /(?:^|\s)(?:@?rana\s+)?(?:play|p|播放|撥放|放|放歌|點歌)\s+(.+)/i;
-const QUEUE_RE = /(?:現在|目前|queue|清單|列表|歌單|還有哪些歌|有哪些歌|還有什麼|剩下|正在播|播什麼|播放中)/i;
+const AUDIO_URL_RE = /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|music\.youtube\.com|bilibili\.com|b23\.tv|soundcloud\.com)\/\S+/i;
+const PLAY_COMMAND_RE = /(?:^|\s)(?:@?rana\s*)?(?:(?:play|p)\s+|(?:播放|撥放|放歌|點歌|放|播)\s*)(.+)/i;
+const QUEUE_RE = /(?:queue|清單|列表|歌單|還有哪些歌|有哪些歌|還有什麼歌|剩下(?:什麼|哪些|幾首)?歌|正在播(?:什麼)?|現在(?:播什麼|放什麼|還有哪些歌|還有什麼歌)|目前(?:播什麼|放什麼|還有哪些歌|還有什麼歌)|播放中)/i;
 const NEXT_RE = /(?:下一首|下一個|next)/i;
 const SKIP_RE = /^(?:@?rana\s+)?(?:跳過|skip|切歌)(?:\s*(?:這一首|這首|目前這首|current)|\s+(.+))?\s*$/i;
 const JOIN_RE = /(?:進來|加入|過來|join|come in)(?:我|這個|這裡|這邊|這頻道|這個頻道|語音|voice|channel|\s)*/i;
@@ -34,6 +35,14 @@ function isRanaMention(text) {
   return /(?:^|\s)@?rana\b/i.test(text) || /樂奈/.test(text);
 }
 
+function stripRanaMention(text) {
+  return firstText(text).replace(/<@!?\d+>/g, "").replace(/(?:^|\s)@?rana\b/ig, " ").replace(/樂奈/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isMusicSourceUrl(url) {
+  return AUDIO_URL_RE.test(firstText(url));
+}
+
 function ranaFallback(text) {
   if (/(洗碗|洗盤|洗杯|打掃|掃地|拖地|倒垃圾)/.test(text)) return "不要。";
   if (/(幫我|拜託|求你|可以|能不能|可不可以)/.test(text)) return "不行。";
@@ -58,13 +67,18 @@ function parsePlayRequest(event) {
 
   for (const text of candidates) {
     const command = text.match(PLAY_COMMAND_RE);
-    if (!command) continue;
+    if (!command) {
+      if (!isRanaMention(text)) continue;
+      const bareUrl = text.match(AUDIO_URL_RE)?.[0]?.replace(/[>\])"'.,]+$/g, "");
+      if (bareUrl) return { url: bareUrl, query: null, display: bareUrl };
+      continue;
+    }
 
     const target = command[1].trim().replace(/[>\])"'.,]+$/g, "");
     if (!target) continue;
 
     const url = target.match(URL_RE)?.[0]?.replace(/[>\])"'.,]+$/g, "");
-    if (url) return { url, query: null, display: url };
+    if (url && isMusicSourceUrl(url)) return { url, query: null, display: url };
 
     const query = target.replace(/^["'「『“”]+|["'」』“”]+$/g, "").trim();
     if (query) return { url: null, query, display: query };
@@ -79,6 +93,7 @@ function parseControlRequest(event) {
   const text = [body, content].filter(Boolean).join("\n");
   if (!text) return null;
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const clean = stripRanaMention(text);
 
   if (JOIN_RE.test(text)) return { kind: "join" };
 
@@ -96,8 +111,8 @@ function parseControlRequest(event) {
   }
   if (LEAVE_RE.test(text)) return { kind: "leave" };
   if (STOP_RE.test(text)) return { kind: "stop" };
-  if (NEXT_RE.test(text)) return { kind: "next" };
-  if (QUEUE_RE.test(text)) return { kind: "queue" };
+  if (NEXT_RE.test(clean)) return { kind: "next" };
+  if (QUEUE_RE.test(clean)) return { kind: "queue" };
   return null;
 }
 

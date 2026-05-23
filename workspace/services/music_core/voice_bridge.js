@@ -885,31 +885,34 @@ async function publishQueuePanel(guildId, textChannelId) {
   return { message_id: message.id, updated: false };
 }
 
+async function performQueuePanelAction(action, guildId) {
+  if (action === 'skip') {
+    await skipCurrent(guildId);
+    await new Promise(resolve => setTimeout(resolve, 600));
+  } else if (action === 'remove_next') {
+    const queue = playQueues.get(guildId) || [];
+    queue.shift();
+    playQueues.set(guildId, queue);
+  } else if (action === 'vol_down') {
+    await setPlaybackVolume(guildId, getGuildVolume(guildId) - 10);
+  } else if (action === 'vol_up') {
+    await setPlaybackVolume(guildId, getGuildVolume(guildId) + 10);
+  } else if (action === 'stop') {
+    await stopPlayback(guildId);
+  } else if (action === 'leave') {
+    playQueues.set(guildId, []);
+    currentTracks.delete(guildId);
+    activePlayers.delete(guildId);
+    leaveVoiceChannel(guildId);
+  }
+}
+
 async function handleQueueButton(interaction) {
   const [scope, action, guildId] = String(interaction.customId || '').split('|');
   if (scope !== 'rana_queue' || !guildId) return;
 
   try {
-    if (action === 'skip') {
-      await skipCurrent(guildId);
-      await new Promise(resolve => setTimeout(resolve, 600));
-    } else if (action === 'remove_next') {
-      const queue = playQueues.get(guildId) || [];
-      queue.shift();
-      playQueues.set(guildId, queue);
-    } else if (action === 'vol_down') {
-      await setPlaybackVolume(guildId, getGuildVolume(guildId) - 10);
-    } else if (action === 'vol_up') {
-      await setPlaybackVolume(guildId, getGuildVolume(guildId) + 10);
-    } else if (action === 'stop') {
-      await stopPlayback(guildId);
-    } else if (action === 'leave') {
-      playQueues.set(guildId, []);
-      currentTracks.delete(guildId);
-      activePlayers.delete(guildId);
-      leaveVoiceChannel(guildId);
-    }
-
+    await performQueuePanelAction(action, guildId);
     await interaction.update(queuePanelPayload(guildId));
   } catch (err) {
     log('QUEUE_UI', `Button ${action} failed guild=${guildId}: ${err.message}`);
@@ -1072,6 +1075,22 @@ const server = http.createServer(async (req, res) => {
     }
     log('QUEUE', `Imported guild=${guildId} queued=${restored.length} current=${currentTracks.has(guildId)}`);
     return respond(200, { ...getQueueState(guildId), status: 'imported', imported: restored.length });
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/resume-current') {
+    const body = await parseBody(req);
+    const guildId = body.guild_id;
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    const current = currentTracks.get(guildId);
+    if (!current?.stream_url) return respond(404, { status: 'idle', message: 'No current track to resume' });
+    log('HTTP', `POST /voice/resume-current guild=${guildId} title="${current.title || ''}"`);
+    try {
+      await lavalinkPlay(guildId, current.channel_id, current.stream_url, current.title, current.requester_id);
+      return respond(200, { ...getQueueState(guildId), status: 'resumed' });
+    } catch (err) {
+      log('QUEUE', `Resume current failed guild=${guildId}: ${err.message}`);
+      return respond(500, { status: 'error', message: err.message });
+    }
   }
 
   if (req.method === 'POST' && req.url === '/voice/skip') {
@@ -1247,6 +1266,7 @@ server.listen(BRIDGE_PORT, '127.0.0.1', () => {
   log('BRIDGE', `  GET  /diagnostics  ← Use this for debugging voice issues`);
   log('BRIDGE', `  GET  /guilds`);
   log('BRIDGE', `  POST /voice/queue-panel { guild_id, text_channel_id }`);
+  log('BRIDGE', `  POST /voice/resume-current { guild_id }`);
   log('BRIDGE', `  POST /voice/play   { guild_id, channel_id, stream_url, title }`);
   log('BRIDGE', `  POST /voice/leave  { guild_id }`);
 });

@@ -827,35 +827,38 @@ function shortText(value, max = 90) {
 function queuePanelPayload(guildId) {
   const state = getQueueState(guildId);
   const queue = Array.isArray(state.queue) ? state.queue : [];
-  const currentTitle = state.current?.title ? shortText(state.current.title, 220) : '沒有在播。';
-  const nextTitle = state.next?.title ? shortText(state.next.title, 220) : '後面沒有。';
-  const queueLines = queue.slice(0, 10).map((item) => `${item.index}. ${shortText(item.title, 72)}`);
+  const currentTitle = state.current?.title ? shortText(state.current.title, 96) : '沒有在播。';
+  const nextTitle = state.next?.title ? shortText(state.next.title, 96) : '後面沒有。';
+  const queueLines = queue.slice(0, 8).map((item) => `\`${String(item.index).padStart(2, '0')}\` ${shortText(item.title, 64)}`);
   const hiddenCount = Math.max(0, queue.length - queueLines.length);
-  if (hiddenCount > 0) queueLines.push(`…還有 ${hiddenCount} 首。`);
+  if (hiddenCount > 0) queueLines.push(`\`…\` 還有 ${hiddenCount} 首。`);
 
   const embed = new EmbedBuilder()
     .setColor(0x7fd6a4)
     .setTitle('樂奈的歌單')
     .addFields(
-      { name: '正在播', value: currentTitle, inline: false },
-      { name: '下一首', value: nextTitle, inline: false },
-      { name: `後面 (${queue.length})`, value: queueLines.join('\n') || '沒有。', inline: false },
+      { name: '正在播', value: currentTitle, inline: true },
+      { name: '下一首', value: nextTitle, inline: true },
+      { name: '音量', value: `${state.volume ?? DEFAULT_VOLUME}`, inline: true },
+      { name: `後面 ${queue.length} 首`, value: queueLines.join('\n') || '沒有。', inline: false },
     )
-    .setFooter({ text: `音量 ${state.volume ?? DEFAULT_VOLUME}｜更新 ${new Date().toLocaleTimeString('zh-TW', { hour12: false })}` });
+    .setFooter({ text: `更新 ${new Date().toLocaleTimeString('zh-TW', { hour12: false })}` });
 
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`rana_queue|refresh|${guildId}`).setLabel('再看').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`rana_queue|skip|${guildId}`).setLabel('跳過').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`rana_queue|remove_next|${guildId}`).setLabel('拿掉下一首').setStyle(ButtonStyle.Secondary).setDisabled(queue.length === 0),
+    new ButtonBuilder().setCustomId(`rana_queue|refresh|${guildId}`).setEmoji({ name: '🔄' }).setLabel('再看').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`rana_queue|skip|${guildId}`).setEmoji({ name: '⏭️' }).setLabel('跳過').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`rana_queue|remove_next|${guildId}`).setEmoji({ name: '🗑️' }).setLabel('下一首').setStyle(ButtonStyle.Secondary).setDisabled(queue.length === 0),
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`rana_queue|vol_down|${guildId}`).setLabel('小聲').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`rana_queue|vol_up|${guildId}`).setLabel('大聲').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`rana_queue|stop|${guildId}`).setLabel('停下').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`rana_queue|leave|${guildId}`).setLabel('出去').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`rana_queue|vol_down|${guildId}`).setEmoji({ name: '🔉' }).setLabel('小聲').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`rana_queue|vol_up|${guildId}`).setEmoji({ name: '🔊' }).setLabel('大聲').setStyle(ButtonStyle.Secondary),
+  );
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`rana_queue|stop|${guildId}`).setEmoji({ name: '⏹️' }).setLabel('停下').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`rana_queue|leave|${guildId}`).setEmoji({ name: '🚪' }).setLabel('出去').setStyle(ButtonStyle.Danger),
   );
 
-  return { embeds: [embed], components: [row1, row2] };
+  return { embeds: [embed], components: [row1, row2, row3] };
 }
 
 async function publishQueuePanel(guildId, textChannelId) {

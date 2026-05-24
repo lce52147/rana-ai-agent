@@ -265,21 +265,34 @@ function joinVoiceChannel(guildId, channelId) {
     const cachedChannelId = guildChannels.get(guildId);
     const cachedState = voiceStates.get(guildId);
     const hasCompleteState = cachedState && cachedState.sessionId && cachedState.token && cachedState.endpoint;
+    const needsFreshVoiceServer = cachedChannelId === channelId && !hasCompleteState;
 
     if (cachedChannelId === channelId && hasCompleteState) {
       log('VOICE', `Already in guild=${guildId} channel=${channelId}; reusing current voice state`);
       return resolve({ ...cachedState });
     }
 
-    // Join or move directly. Do not send channel_id:null before playing:
-    // that visibly leaves/rejoins the VC and can reset the Discord voice session.
+    // Join or move directly. Normally we avoid channel_id:null because it is a
+    // visible leave/rejoin. If Discord already has us in the target channel but
+    // we lack VOICE_SERVER_UPDATE credentials, a fresh leave/join is the only
+    // reliable way to make Discord emit a new token + endpoint.
     guildChannels.set(guildId, channelId);
-    if (cachedChannelId !== channelId) voiceStates.delete(guildId);
+    if (cachedChannelId !== channelId || needsFreshVoiceServer) voiceStates.delete(guildId);
     const timer = setTimeout(() => {
       voicePending.delete(guildId);
       reject(new Error(`Voice join timeout for guild=${guildId} channel=${channelId}`));
-    }, 12000);
+    }, 20000);
     voicePending.set(guildId, { resolve, reject, timer });
+
+    if (needsFreshVoiceServer) {
+      log('VOICE', `Missing voice server credentials for guild=${guildId}; forcing fresh voice handshake channel=${channelId}`);
+      guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: null, self_mute: true, self_deaf: true } });
+      setTimeout(() => {
+        log('VOICE', `Sent OP4: fresh join guild=${guildId} channel=${channelId}`);
+        guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: true, self_deaf: true } });
+      }, 800);
+      return;
+    }
 
     log('VOICE', `Sent OP4: join/move guild=${guildId} channel=${channelId}`);
     guildShard.send({ op: 4, d: { guild_id: guildId, channel_id: channelId, self_mute: true, self_deaf: true } });
@@ -517,9 +530,13 @@ function connectLavalink() {
           }
         } else if (msg.type === 'TrackStartEvent') {
           log('LAVALINK', `▶️  TrackStart guild=${guild} track=${msg.track?.info?.title?.substring(0, 50) || '?'}`);
+          activePlayers.add(guild);
         } else if (msg.type === 'TrackEndEvent') {
           log('LAVALINK', `⏹  TrackEnd guild=${guild} reason=${msg.reason}`);
           currentTracks.delete(guild);
+          if (String(msg.reason || '').toUpperCase() !== 'REPLACED') {
+            activePlayers.delete(guild);
+          }
           if (guild && !['REPLACED', 'STOPPED'].includes(String(msg.reason || '').toUpperCase())) {
             setTimeout(() => playNextQueued(guild), 250);
             setTimeout(() => {
@@ -631,6 +648,7 @@ async function hasConnectedPlayer(guildId, channelId) {
   const result = await lavalinkREST('GET', `/v4/sessions/${lavalinkSessionId}/players/${guildId}`);
   if (result.status === 404) {
     activePlayers.delete(guildId);
+    currentTracks.delete(guildId);
     return false;
   }
   if (result.status !== 200 || !result.body) {
@@ -645,6 +663,7 @@ async function hasConnectedPlayer(guildId, channelId) {
     return true;
   }
   activePlayers.delete(guildId);
+  if (!connected) currentTracks.delete(guildId);
   log('LAVALINK', `[PLAYER] track-only disabled guild=${guildId} connected=${connected} playerChannel=${playerChannelId || 'null'} target=${channelId}`);
   return false;
 }

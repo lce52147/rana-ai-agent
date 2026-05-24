@@ -2,6 +2,8 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:8081";
 const PLAY_API_URL = "http://127.0.0.1:8080/api/play";
 const VOICE_BASE_URL = "http://127.0.0.1:8081";
 const HOT_TOOLS_URL = "http://127.0.0.1:8091";
+const HTTP_TIMEOUT_MS = 12000;
+const PLAY_HTTP_TIMEOUT_MS = 45000;
 const DEFAULT_GUILD_ID = "1486679037605842944";
 const DEFAULT_TEXT_CHANNEL_ID = "1495319712370917396";
 const URL_RE = /https?:\/\/\S+/i;
@@ -190,37 +192,65 @@ function resolveTextChannelId(event, ctx) {
   return DEFAULT_TEXT_CHANNEL_ID;
 }
 
-async function postJson(url, body, signal) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  const text = await res.text();
-  let data = null;
+async function postJson(url, body, signal, timeoutMs = HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch (_) {}
-  if (!res.ok) {
-    const detail = data?.error || text || `HTTP ${res.status}`;
-    throw new Error(String(detail));
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {}
+    if (!res.ok) {
+      const detail = data?.error || text || `HTTP ${res.status}`;
+      throw new Error(String(detail));
+    }
+    return data ?? {};
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(`request timeout (${timeoutMs}ms): ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
-  return data ?? {};
 }
 
-async function getJson(url, signal) {
-  const res = await fetch(url, { signal });
-  const text = await res.text();
-  let data = null;
+async function getJson(url, signal, timeoutMs = HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch (_) {}
-  if (!res.ok) {
-    const detail = data?.error || text || `HTTP ${res.status}`;
-    throw new Error(String(detail));
+    const res = await fetch(url, { signal: controller.signal });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {}
+    if (!res.ok) {
+      const detail = data?.error || text || `HTTP ${res.status}`;
+      throw new Error(String(detail));
+    }
+    return data ?? {};
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(`request timeout (${timeoutMs}ms): ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
-  return data ?? {};
 }
 
 async function resolveYouTubeKeyword(query) {
@@ -353,6 +383,7 @@ const plugin = {
             return { handled: true, text: "走了。" };
           }
         } catch (err) {
+          console.warn(`[rana-music-tools] control error (${control.kind}): ${err?.message || String(err)}`);
           return { handled: true, text: ranaError(err?.message || String(err)) };
         }
       }
@@ -388,7 +419,10 @@ const plugin = {
           guild_id: DEFAULT_GUILD_ID,
           requester_id: requesterId,
           requester: requesterId,
-        });
+        }, undefined, PLAY_HTTP_TIMEOUT_MS);
+        if (data?.status === "error" || (data?.status === "extracted" && (data?.message || data?.llm_hint))) {
+          throw new Error(firstText(data?.llm_hint) || firstText(data?.message) || "這個放不了。");
+        }
         const title = firstText(data?.title) || parsed.display;
         const playlistCount = Number(data?.playlist_count || 0);
         const queuedCount = Number(data?.queued_count || 0);
@@ -400,6 +434,7 @@ const plugin = {
             : (wasQueuedBehindCurrent ? ranaQueuedOk(title, queuedCount) : ranaOk(title)),
         };
       } catch (err) {
+        console.warn(`[rana-music-tools] play error: ${err?.message || String(err)}`);
         return {
           handled: true,
           text: ranaError(err?.message || String(err)),

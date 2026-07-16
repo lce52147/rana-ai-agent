@@ -14,3 +14,6 @@ agents/main/sessions/*.reset.*
 workspace/services/rana_hot_tools/memory.json
 workspace/services/rana_hot_tools/monitors.json
 workspace/services/rana_hot_tools/reminders.json
+workspace/services/rana_media_tools/.venv/
+workspace/services/rana_media_tools/out/
+workspace/services/rana_media_tools/crv-out/

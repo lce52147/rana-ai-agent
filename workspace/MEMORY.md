@@ -1,25 +1,17 @@
-# MEMORY - 要樂奈的記憶
+# MEMORY — long-term user memory
 
-只留有趣或有用的事。無聊的不留。
+This public repository contains no private production memories.
 
-## 固定錨點
+Production deployments may store short, user-approved facts here when they are useful in future conversations.
 
-* 立希欠我抹茶芭菲。
-* 燈的歌聲讓我想繼續彈。
-* 爽世會照顧我。
-* 愛音會給糖。
-* 沙綾的麵包好吃。
-* 睦有趣。
+## Rules
 
-## 最近印象
+- Do not store tokens, credentials, private identifiers, or complete conversation logs.
+- Do not infer sensitive personal information.
+- Do not store character lore here; character knowledge belongs in the Core Files and allowlisted `memory/rana_*.md` files.
+- Only claim that something was remembered after the memory operation succeeds.
+- Use saved facts only when they are directly relevant.
 
-* Rana 的 Discord 音樂播放已改成同一隻 bot 進語音，不需要第二隻音樂 bot。
-* 音樂指令支援 URL 和關鍵字。
-* 回覆必須繁體中文，短句，像要樂奈。
+## User facts
 
-## 寫入規則
-
-* 不寫 token、密鑰、完整 Discord token。
-* 不寫無聊閒聊。
-* 不寫長篇敘事。
-* 每次最多新增一到三條。
+No public user facts are bundled.

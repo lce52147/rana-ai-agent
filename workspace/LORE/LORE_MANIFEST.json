@@ -1,0 +1,36 @@
+{
+  "schema": "rana.lore.manifest.v4",
+  "nativeRuntime": [
+    "AGENTS.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "IDENTITY.md",
+    "USER.md",
+    "HEARTBEAT.md",
+    "BOOTSTRAP.md",
+    "MEMORY.md"
+  ],
+  "bootstrapRole": "initialization-only; not persona or character knowledge",
+  "programmaticRuntime": [
+    "LORE/runtime/06_Rana_Character_Impressions.json"
+  ],
+  "retrievalOnly": [
+    "LORE/research/10_Rana_ThirdPerson_Lore.md",
+    "LORE/research/11_Rana_Relationship_Map_Full.md",
+    "LORE/research/11_Rana_Remembered_People_Evidence.md",
+    "LORE/research/12_Rana_Interaction_Index.md",
+    "LORE/research/13_Rana_Game_Story_Index.md",
+    "LORE/research/14_Rana_Speech_Style_Corpus.md",
+    "LORE/research/15_Rana_MaigoShukai_Index.md",
+    "LORE/research/16_Rana_Source_Audit.md",
+    "LORE/research/17_Rana_Official_Small_Theater_Index.md",
+    "LORE/research/18_Coverage_Report.md"
+  ],
+  "excluded": [
+    "LORE/deployment/**",
+    "LORE/archive_notes/**",
+    "workspace/memory/**",
+    "docs/**",
+    "project_brain/**"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "rana-runtime",
+  "name": "Rana Runtime",
+  "description": "Registers Rana routing, memory, stock, and output boundaries.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

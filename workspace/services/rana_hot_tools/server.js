@@ -1,4 +1,5 @@
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
@@ -7,19 +8,22 @@ const { promisify } = require("util");
 const PORT = Number(process.env.RANA_HOT_TOOLS_PORT || 8091);
 const ROOT = __dirname;
 const RULES_PATH = path.join(ROOT, "rules.json");
-const MEMORY_PATH = path.join(ROOT, "memory.json");
 const WORKSPACE_ROOT = path.resolve(ROOT, "..", "..");
 const WORKSPACE_MEMORY_PATH = path.join(WORKSPACE_ROOT, "MEMORY.md");
-const DURABLE_MEMORY_DIR = path.join(WORKSPACE_ROOT, "memory");
 const REMINDERS_PATH = path.join(ROOT, "reminders.json");
 const MONITORS_PATH = path.join(ROOT, "monitors.json");
 const DEFAULT_LEPRECHAUN_ROOT = "D:\\_Project\\Leprechaun";
-const LEPRECHAUN_STRATEGY_VERSION = "trend-regime-v3-event-risk-adjusted";
+const LEPRECHAUN_STRATEGY_VERSION = "cross-sectional-logit-v1";
 const MAX_TELEMETRY_AGE_MS = Number(process.env.LEPRECHAUN_MAX_TELEMETRY_AGE_MS || 2 * 60 * 1000);
 const LEPRECHAUN_TRIAL_MIN_EVALUATED = Number(process.env.LEPRECHAUN_TRIAL_MIN_EVALUATED || 30);
 const LEPRECHAUN_TRIAL_BRIER_MAX = Number(process.env.LEPRECHAUN_TRIAL_BRIER_MAX || 0.30);
 const LEPRECHAUN_MAX_TICKERS_PER_QUERY = Number(process.env.LEPRECHAUN_MAX_TICKERS_PER_QUERY || 5);
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.resolve(WORKSPACE_ROOT, "..", "openclaw.json");
+const DEFAULT_DISCORD_GUILD_ID = process.env.RANA_DISCORD_GUILD_ID || "1486679037605842944";
+const DISCORD_MEMBER_ROLE_CACHE_MS = Number(process.env.RANA_DISCORD_ROLE_CACHE_MS || 60 * 1000);
 const cooldowns = new Map();
+const discordRoleCache = new Map();
+let cachedDiscordToken;
 const execFileAsync = promisify(execFile);
 
 function pythonEnv() {
@@ -39,13 +43,12 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function todayTaipeiDate() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Taipei",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+function readTextFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+  } catch (_) {
+    return "";
+  }
 }
 
 function normalizeMemoryText(text) {
@@ -79,36 +82,44 @@ function isTransientMemoryText(text) {
   return /(?:剛剛|剛才|這次|本次|目前這個|今天這個|debug|quota|額度|排程|scheduled task|music_pipeline_debug_summary|failing test|暫時|等一下再改|這輪|這個 session)/i.test(clean);
 }
 
-function appendDurableMemory(text, meta = {}) {
-  const clean = normalizeMemoryText(text);
-  if (!clean || isSensitiveMemory(clean)) return false;
-  fs.mkdirSync(DURABLE_MEMORY_DIR, { recursive: true });
-  const filePath = path.join(DURABLE_MEMORY_DIR, `${todayTaipeiDate()}.md`);
-  const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
-  if (existing.includes(clean)) return false;
-  const header = existing.trim() ? "" : `# ${todayTaipeiDate()} Rana memory\n\n`;
-  const source = meta.source ? ` source=${meta.source}` : "";
-  fs.appendFileSync(filePath, `${header}- ${new Date().toISOString()}${source}: ${clean}\n`, "utf8");
-  return true;
-}
-
 function appendWorkspaceMemory(text) {
   const clean = normalizeMemoryText(text);
   if (!clean || isSensitiveMemory(clean)) return false;
   let content = fs.existsSync(WORKSPACE_MEMORY_PATH) ? fs.readFileSync(WORKSPACE_MEMORY_PATH, "utf8") : "# MEMORY - 要樂奈的記憶\n";
   if (content.includes(clean)) return false;
   const section = "## 使用者記憶";
+  const factsSection = "### 使用者事實";
   const bullet = `* ${clean}\n`;
   if (!content.includes(section)) {
-    content = `${content.trimEnd()}\n\n${section}\n\n${bullet}`;
-  } else {
+    content = `${content.trimEnd()}\n\n${section}\n\n${factsSection}\n\n${bullet}`;
+  } else if (!content.includes(factsSection)) {
     const marker = `${section}\n`;
+    const index = content.indexOf(marker) + marker.length;
+    content = `${content.slice(0, index)}\n${factsSection}\n\n${bullet}${content.slice(index)}`;
+  } else {
+    const marker = `${factsSection}\n`;
     const index = content.indexOf(marker) + marker.length;
     const needsBlank = content.slice(index, index + 1) !== "\n";
     content = `${content.slice(0, index)}${needsBlank ? "\n" : ""}${bullet}${content.slice(index)}`;
   }
   fs.writeFileSync(WORKSPACE_MEMORY_PATH, content, "utf8");
   return true;
+}
+
+function removeWorkspaceMemory(query) {
+  const clean = normalizeMemoryText(query);
+  if (!clean) return { removed: 0, items: [] };
+  const content = fs.existsSync(WORKSPACE_MEMORY_PATH) ? fs.readFileSync(WORKSPACE_MEMORY_PATH, "utf8") : "";
+  const lines = content.split(/\r?\n/);
+  const removed = [];
+  const kept = lines.filter((line, index) => {
+    const item = parseMarkdownMemoryLine(line, WORKSPACE_MEMORY_PATH, index);
+    if (!item || !memoryMatches(item.text, clean)) return true;
+    removed.push(item);
+    return false;
+  });
+  if (removed.length > 0) fs.writeFileSync(WORKSPACE_MEMORY_PATH, kept.join("\n"), "utf8");
+  return { removed: removed.length, items: removed };
 }
 
 function textOf(value) {
@@ -119,20 +130,125 @@ function senderIdOf(payload) {
   return textOf(payload.senderId || payload.sender_id || payload.authorId || payload.userId || payload.requesterId || payload.requester_id);
 }
 
+function roleNamesOf(payload) {
+  const raw = payload?.roles || payload?.roleNames || payload?.role_names || payload?.memberRoles || payload?.member_roles || [];
+  const list = Array.isArray(raw) ? raw : textOf(raw).split(/[,\s，、|/]+/u);
+  return list
+    .map((item) => typeof item === "string" ? item : textOf(item?.name || item?.label || item?.id))
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function findDiscordToken(value, pathParts = []) {
+  if (!value || typeof value !== "object") return "";
+  for (const [key, child] of Object.entries(value)) {
+    const nextPath = [...pathParts, key];
+    if (typeof child === "string" && key.toLowerCase() === "token" && nextPath.some((part) => /discord/i.test(part))) {
+      return child;
+    }
+    if (child && typeof child === "object") {
+      const found = findDiscordToken(child, nextPath);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+
+function discordBotToken() {
+  if (cachedDiscordToken !== undefined) return cachedDiscordToken;
+  cachedDiscordToken = textOf(process.env.RANA_DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN);
+  if (cachedDiscordToken) return cachedDiscordToken;
+  const config = readJson(OPENCLAW_CONFIG_PATH, {});
+  cachedDiscordToken = findDiscordToken(config);
+  return cachedDiscordToken;
+}
+
+function discordGetJson(pathname) {
+  const token = discordBotToken();
+  if (!token) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: "discord.com",
+      path: `/api/v10${pathname}`,
+      method: "GET",
+      timeout: 3500,
+      headers: {
+        Authorization: `Bot ${token}`,
+        "User-Agent": "rana-hot-tools/1.0",
+      },
+    }, (res) => {
+      let raw = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { raw += chunk; });
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return resolve(null);
+        try {
+          resolve(raw ? JSON.parse(raw) : null);
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+async function discordMemberRoles(userId) {
+  if (!userId || !DEFAULT_DISCORD_GUILD_ID) return [];
+  const cacheKey = `${DEFAULT_DISCORD_GUILD_ID}:${userId}`;
+  const cached = discordRoleCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < DISCORD_MEMBER_ROLE_CACHE_MS) return cached.roles;
+  const member = await discordGetJson(`/guilds/${DEFAULT_DISCORD_GUILD_ID}/members/${encodeURIComponent(userId)}`);
+  const roles = Array.isArray(member?.roles) ? member.roles.map(String).filter(Boolean) : [];
+  discordRoleCache.set(cacheKey, { ts: Date.now(), roles });
+  return roles;
+}
+
 function isOwner(payload, rules) {
   const senderId = senderIdOf(payload);
   const ownerIds = Array.isArray(rules.security?.ownerIds) ? rules.security.ownerIds.map(String) : [];
   return Boolean(senderId && ownerIds.includes(senderId));
 }
 
+async function canWriteMemory(payload, rules) {
+  return await hasRolePermission(payload, rules, "memoryWriteRoles");
+}
+
+async function canDeleteMemory(payload, rules) {
+  return await hasRolePermission(payload, rules, "memoryDeleteRoles");
+}
+
+async function canUseTools(payload, rules) {
+  return await hasAnyRolePermission(payload, rules, ["toolUseRoles", "residentRoles"]);
+}
+
+async function hasRolePermission(payload, rules, field) {
+  return await hasAnyRolePermission(payload, rules, [field]);
+}
+
+async function hasAnyRolePermission(payload, rules, fields) {
+  if (isOwner(payload, rules)) return true;
+  const allowedRoles = fields.flatMap((field) => Array.isArray(rules.security?.[field])
+    ? rules.security[field].map(String)
+    : []);
+  if (allowedRoles.length === 0) return false;
+  const roles = roleNamesOf(payload);
+  if (roles.some((role) => allowedRoles.includes(role))) return true;
+  const fetchedRoles = await discordMemberRoles(senderIdOf(payload));
+  return fetchedRoles.some((role) => allowedRoles.includes(role));
+}
+
 function isOwnerOnlyIntent(text) {
   const clean = stripMention(text);
   return isMemoryWriteIntent(clean)
+    || isMemoryDeleteIntent(clean)
     || /(提醒|監控|盯著|編隊|小隊|squad|RAG|rag|LORE|lore|prompt|人格|規則|工具設定)/i.test(clean);
 }
 
 function ownerOnlyReply() {
-  return { handled: true, kind: "security:not_owner", reply: "不行。這個只有主人能動。" };
+  return { handled: true, kind: "security:not_owner", reply: "沒有權限。" };
 }
 
 function stripMention(text) {
@@ -149,6 +265,8 @@ function stripQuestionTail(text) {
 
 function normalizeRecallQuery(text) {
   return stripQuestionTail(textOf(text))
+    .replace(/^(?:你|妳)?(?:還)?記得\s*/u, "")
+    .replace(/(?:什麼|哪一個|哪個)/gu, "")
     .replace(/(?:這件事|這個|那些|嗎|嘛|呢)$/g, "")
     .trim();
 }
@@ -161,6 +279,34 @@ function compactMemoryKey(text) {
     .trim();
 }
 
+const MEMORY_TERMS = [
+  "紫貓",
+  "斧王",
+  "皓男哥",
+  "峰月律",
+  "珂朵莉",
+  "阿彩",
+  "168",
+  "酒量",
+  "酒量差",
+  "容易醉",
+  "喝酒",
+  "喝一杯",
+  "喝一下",
+  "男娘",
+  "帥哥",
+  "早起",
+  "不想起床",
+  "蕎麥麵",
+  "愛吃",
+  "喜歡",
+];
+
+function memoryTerms(text) {
+  const compact = compactMemoryKey(text);
+  return MEMORY_TERMS.filter((term) => compact.includes(compactMemoryKey(term)));
+}
+
 function memoryMatches(itemText, query) {
   const haystack = normalizeMemoryText(itemText);
   const needle = normalizeMemoryText(query);
@@ -170,6 +316,20 @@ function memoryMatches(itemText, query) {
   const compactNeedle = compactMemoryKey(needle);
   if (!compactNeedle) return false;
   if (compactHaystack.includes(compactNeedle)) return true;
+  const haystackTerms = memoryTerms(haystack);
+  const needleTerms = memoryTerms(needle);
+  if (needleTerms.length > 0) {
+    const matched = needleTerms.filter((term) => haystackTerms.includes(term));
+    const hasSubject = matched.some((term) => /^(?:紫貓|斧王|皓男哥|峰月律|珂朵莉|阿彩|168)$/.test(term));
+    const hasPredicate = matched.some((term) => !/^(?:紫貓|斧王|皓男哥|峰月律|珂朵莉|阿彩|168)$/.test(term));
+    if (hasSubject
+      && /(?:[01]\s*(?:還是|or)\s*[01])|(?:是\s*[01]\s*(?:嗎|呢)?$)/iu.test(needle)
+      && /(?:是|=)\s*[01]/u.test(haystack)) return true;
+    if (matched.length >= 2) return true;
+    if (hasSubject && /(?:是誰|是什麼|什麼人|哪個|哪位)/.test(needle)) return true;
+    if (hasSubject && hasPredicate) return true;
+    if (/(?:誰|哪個|哪位)/.test(needle) && hasPredicate) return true;
+  }
   let cursor = 0;
   for (const char of compactNeedle) {
     cursor = compactHaystack.indexOf(char, cursor);
@@ -179,6 +339,33 @@ function memoryMatches(itemText, query) {
   return compactNeedle.length >= 3;
 }
 
+function parseMarkdownMemoryLine(line, filePath, index) {
+  const match = textOf(line).match(/^\s*[-*]\s+(.+?)\s*$/);
+  if (!match) return null;
+  let text = match[1]
+    .replace(/<!--.*?-->/g, "")
+    .replace(/^\d{4}-\d{2}-\d{2}T\S+\s+(?:source=[^:]+:\s*)?/, "")
+    .trim();
+  if (!text || /^Runtime test memories\b/i.test(text)) return null;
+  if (isSensitiveMemory(text)) return null;
+  return {
+    text,
+    createdAt: null,
+    source: path.relative(WORKSPACE_ROOT, filePath).replace(/\\/g, "/"),
+    line: index + 1,
+  };
+}
+
+function readMarkdownMemories() {
+  const items = [];
+  const lines = readTextFile(WORKSPACE_MEMORY_PATH).split(/\r?\n/);
+  lines.forEach((line, index) => {
+    const item = parseMarkdownMemoryLine(line, WORKSPACE_MEMORY_PATH, index);
+    if (item) items.push(item);
+  });
+  return items;
+}
+
 function isMemoryWriteIntent(text) {
   const clean = stripMention(text);
   if (!clean) return false;
@@ -186,11 +373,26 @@ function isMemoryWriteIntent(text) {
     || /^.+[\s，,。:：]+(?:記下來|記起來|記住|記下)$/.test(clean);
 }
 
+function isMemoryDeleteIntent(text) {
+  const clean = stripMention(text);
+  if (!clean) return false;
+  return /^(?:幫我)?(?:忘記|刪掉|刪除|移除|不要記得)\s*(?!嗎|嘛|呢|[?？]).+/.test(clean)
+    || /^.+[\s，,。:：]+(?:忘記|刪掉|刪除|移除)$/.test(clean);
+}
+
 function extractMemoryText(text) {
   const clean = stripMention(text);
   return clean
     .replace(/^(?:現在)?(?:幫我)?(?:記下來|記起來|記住|記下)[\s，,。:：]*/, "")
     .replace(/[\s，,。:：]*(?:記下來|記起來|記住|記下)$/g, "")
+    .trim();
+}
+
+function extractMemoryDeleteText(text) {
+  const clean = stripMention(text);
+  return clean
+    .replace(/^(?:幫我)?(?:忘記|刪掉|刪除|移除|不要記得)[\s，,。:：]*/, "")
+    .replace(/[\s，,。:：]*(?:忘記|刪掉|刪除|移除)$/g, "")
     .trim();
 }
 
@@ -260,6 +462,27 @@ function handleReminder(text, rules) {
 function handleMemory(text, rules) {
   if (!rules.memory?.enabled) return null;
   const clean = stripMention(text);
+  if (isMemoryDeleteIntent(clean)) {
+    const query = normalizeMemoryText(extractMemoryDeleteText(clean));
+    if (!query) return { handled: true, kind: "memory_delete_empty", reply: "忘記什麼。" };
+    const result = removeWorkspaceMemory(query);
+    return {
+      handled: true,
+      kind: result.removed > 0 ? "memory_delete" : "memory_delete_miss",
+      reply: result.removed > 0 ? "嗯。忘了。" : "沒有那個。",
+      removed: result.removed,
+      items: result.items,
+      status: memoryStatus(),
+    };
+  }
+  if (isMemoryWriteIntent(clean)) {
+    const value = normalizeMemoryText(extractMemoryText(clean));
+    if (!value || isSensitiveMemory(value)) {
+      return { handled: true, kind: "memory_rejected", reply: "這個不記。" };
+    }
+    appendWorkspaceMemory(value);
+    return { handled: true, kind: "memory_save", reply: rules.memory.reply || "嗯。記住了。" };
+  }
   const recall = clean.match(/^(?:你)?(?:還)?記得\s*(.+)?/);
 if (recall && !/^(?:記住|記得提醒)/.test(clean)) {
   if (isCurrentSessionMemoryQuestion(clean)) {
@@ -296,8 +519,7 @@ if (recall && !/^(?:記住|記得提醒)/.test(clean)) {
     };
   }
 
-  const memory = readJson(MEMORY_PATH, { items: [] });
-  const items = Array.isArray(memory.items) ? memory.items : [];
+  const items = readMarkdownMemories();
   const matches = [...items]
     .reverse()
     .filter((item) => memoryMatches(item.text, needle))
@@ -339,19 +561,11 @@ if (recall && !/^(?:記住|記得提醒)/.test(clean)) {
 }
 
 function memoryStatus() {
-  const memory = readJson(MEMORY_PATH, { items: [] });
-  const items = Array.isArray(memory.items) ? memory.items : [];
-  const files = fs.existsSync(DURABLE_MEMORY_DIR)
-    ? fs.readdirSync(DURABLE_MEMORY_DIR).filter((name) => /\.md$/i.test(name))
-    : [];
+  const items = readMarkdownMemories();
   return {
     status: "ok",
-    shortStore: path.relative(WORKSPACE_ROOT, MEMORY_PATH).replace(/\\/g, "/"),
-    durableDir: path.relative(WORKSPACE_ROOT, DURABLE_MEMORY_DIR).replace(/\\/g, "/"),
-    workspaceMemory: path.relative(WORKSPACE_ROOT, WORKSPACE_MEMORY_PATH).replace(/\\/g, "/"),
-    jsonItems: items.length,
-    durableFiles: files.length,
-    latestDurableFile: files.sort().at(-1) || null,
+    store: path.relative(WORKSPACE_ROOT, WORKSPACE_MEMORY_PATH).replace(/\\/g, "/"),
+    markdownItems: items.length,
   };
 }
 
@@ -1335,18 +1549,70 @@ function formatRecommendationLine(prediction, index) {
 async function runLeprechaunRecommendations(rules, limit = 5) {
   const tickers = defaultRecommendationTickers(rules);
   const predictions = await runStructuredLeprechaunResearch(tickers, rules, tickers.length);
-  const ranked = predictions
-    .map((prediction) => ({ prediction, rank: recommendationScore(prediction) }))
-    .sort((a, b) => b.rank - a.rank)
-    .slice(0, Math.max(5, limit));
-  return ranked.map((row) => row.prediction);
+  const candidates = predictions
+    .filter((prediction) => {
+      const signal = prediction.indicators?.cross_sectional_signal || {};
+      return prediction.strategy_version === LEPRECHAUN_STRATEGY_VERSION
+        && signal.status === "current"
+        && signal.strategy_version === LEPRECHAUN_STRATEGY_VERSION
+        && signal.selected === true
+        && signal.risk_eligible === true;
+    })
+    .sort((a, b) => {
+      const aRank = Number(a.indicators?.cross_sectional_signal?.rank ?? Number.MAX_SAFE_INTEGER);
+      const bRank = Number(b.indicators?.cross_sectional_signal?.rank ?? Number.MAX_SAFE_INTEGER);
+      return aRank - bRank;
+    })
+    .slice(0, Math.max(1, limit));
+  return {
+    strategyVersion: LEPRECHAUN_STRATEGY_VERSION,
+    predictions,
+    candidates,
+    productionOpen: predictions.some((prediction) => prediction.performance_gate?.eligible === true),
+  };
 }
 
-function formatLeprechaunRecommendations(predictions) {
-  const lines = predictions.slice(0, 5).map((prediction, index) => formatRecommendationLine(prediction, index + 1));
+function formatLeprechaunRecommendations(result) {
+  const predictions = Array.isArray(result?.predictions) ? result.predictions : [];
+  const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+  const currentSignals = predictions.filter((prediction) => prediction.indicators?.cross_sectional_signal?.status === "current");
+  if (candidates.length === 0) {
+    if (currentSignals.length === 0) {
+      return [
+        `美股。${result?.strategyVersion || LEPRECHAUN_STRATEGY_VERSION} 的當期訊號不可用。`,
+        "不使用舊排序補猜，也不提供買入名單。",
+      ].join("\n");
+    }
+    const blockedTopK = currentSignals
+      .filter((prediction) => {
+        const signal = prediction.indicators?.cross_sectional_signal || {};
+        return Number(signal.rank) <= Number(signal.top_k || 0) && signal.risk_eligible === false;
+      })
+      .sort((a, b) => Number(a.indicators.cross_sectional_signal.rank) - Number(b.indicators.cross_sectional_signal.rank))
+      .map((prediction) => {
+        const signal = prediction.indicators.cross_sectional_signal;
+        return `${prediction.ticker}（rank ${signal.rank}；${(signal.risk_blockers || []).join(", ") || "risk gate rejected"}）`;
+      });
+    return [
+      `美股。${result.strategyVersion} 今天沒有通過風險門檻的 Top-${currentSignals[0]?.indicators?.cross_sectional_signal?.top_k || 2} 候選。`,
+      blockedTopK.length ? `被拒絕: ${blockedTopK.join("、")}。` : "沒有可用候選。",
+      "不補位、不沿用舊排名。正式實盤 gate 尚未開啟，沒有買入建議。",
+    ].join("\n");
+  }
+  const lines = candidates.map((prediction, index) => {
+    const signal = prediction.indicators.cross_sectional_signal;
+    const score = Number.isFinite(Number(signal.probability)) ? Number(signal.probability).toFixed(3) : "N/A";
+    const plan = buildResearchPricePlan(prediction);
+    return [
+      `#${index + 1} ${prediction.ticker}｜cross-sectional rank ${signal.rank}｜排名分數 ${score}`,
+      `研究價位: 觀察 ${plan.entry}｜失效 ${plan.stop}｜目標/壓力 ${plan.target}`,
+    ].join("\n");
+  });
   return [
-    "美股。先給五檔可測名單。",
-    "這是研究預測排序，不是自動下單。",
+    `美股。${result.strategyVersion} 當期研究候選。`,
+    result.productionOpen
+      ? "正式 gate 已開啟；仍需依風險限制判斷。"
+      : "正式實盤 gate 尚未開啟；以下不是買入建議。",
     ...lines,
   ].join("\n");
 }
@@ -1624,11 +1890,18 @@ function handleFallback(text, rules) {
   return { handled: false, kind: "pass", reply: "" };
 }
 
-function decide(payload) {
+async function decide(payload) {
   const rules = readJson(RULES_PATH, { fallbacks: [], defaultReply: "無聊。" });
   const text = textOf(payload.body || payload.content || payload.text);
-  if (!isOwner(payload, rules) && isOwnerOnlyIntent(text)) return Promise.resolve(ownerOnlyReply());
-  return Promise.resolve(handleMemory(text, rules))
+  if (!isOwner(payload, rules) && isOwnerOnlyIntent(text)) {
+    const clean = stripMention(text);
+    const allowedMemoryWrite = isMemoryWriteIntent(clean) && await canWriteMemory(payload, rules);
+    const allowedMemoryDelete = isMemoryDeleteIntent(clean) && await canDeleteMemory(payload, rules);
+    if (!allowedMemoryWrite && !allowedMemoryDelete) {
+      return ownerOnlyReply();
+    }
+  }
+  return await Promise.resolve(handleMemory(text, rules))
     .then((result) => result || handleReminder(text, rules))
     .then(async (result) => result || await handleLeprechaun(text, rules))
     .then((result) => result || handleMonitor(text))
@@ -1662,7 +1935,12 @@ function parseBody(req) {
 const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/health") {
     const rules = readJson(RULES_PATH, {});
-    return send(res, 200, { status: "ok", rulesVersion: rules.version || null, memory: memoryStatus() });
+    return send(res, 200, {
+      status: "ok",
+      rulesVersion: rules.version || null,
+      leprechaunStrategyVersion: LEPRECHAUN_STRATEGY_VERSION,
+      memory: memoryStatus(),
+    });
   }
   if (req.method === "GET" && req.url === "/memory/status") {
     return send(res, 200, memoryStatus());
@@ -1670,7 +1948,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/stock/research") {
     const payload = await parseBody(req);
     const rules = readJson(RULES_PATH, {});
-    if (senderIdOf(payload) && !isOwner(payload, rules)) {
+    if (senderIdOf(payload) && !isOwner(payload, rules) && !await canUseTools(payload, rules)) {
       return send(res, 403, ownerOnlyReply());
     }
     const text = textOf(payload.query || payload.text || payload.body || payload.content);
@@ -1680,7 +1958,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/memory/remember") {
     const payload = await parseBody(req);
     const rules = readJson(RULES_PATH, {});
-    if (senderIdOf(payload) && !isOwner(payload, rules)) {
+    if (senderIdOf(payload) && !await canWriteMemory(payload, rules)) {
       return send(res, 403, ownerOnlyReply());
     }
     const rawText = textOf(payload.text || payload.value);
@@ -1688,15 +1966,29 @@ const server = http.createServer(async (req, res) => {
     if (!text || isSensitiveMemory(text)) {
       return send(res, 400, { handled: true, kind: "memory_rejected", reply: "這個不記。" });
     }
-    const memory = readJson(MEMORY_PATH, { items: [] });
-    memory.items = Array.isArray(memory.items) ? memory.items : [];
-    if (!memory.items.some((item) => normalizeMemoryText(item.text) === text)) {
-      memory.items.push({ text, createdAt: new Date().toISOString(), source: textOf(payload.source) || "api" });
-      writeJson(MEMORY_PATH, memory);
-    }
-    appendDurableMemory(text, { source: textOf(payload.source) || "api" });
     appendWorkspaceMemory(text);
     return send(res, 200, { handled: true, kind: "memory_save", reply: "嗯。記住了。", status: memoryStatus() });
+  }
+  if (req.method === "POST" && req.url === "/memory/delete") {
+    const payload = await parseBody(req);
+    const rules = readJson(RULES_PATH, {});
+    if (senderIdOf(payload) && !await canDeleteMemory(payload, rules)) {
+      return send(res, 403, ownerOnlyReply());
+    }
+    const rawText = textOf(payload.query || payload.text || payload.value);
+    const query = normalizeMemoryText(isMemoryDeleteIntent(rawText) ? extractMemoryDeleteText(rawText) : rawText);
+    if (!query) {
+      return send(res, 400, { handled: true, kind: "memory_delete_empty", reply: "忘記什麼。" });
+    }
+    const result = removeWorkspaceMemory(query);
+    return send(res, 200, {
+      handled: true,
+      kind: result.removed > 0 ? "memory_delete" : "memory_delete_miss",
+      reply: result.removed > 0 ? "嗯。忘了。" : "沒有那個。",
+      removed: result.removed,
+      items: result.items,
+      status: memoryStatus(),
+    });
   }
 if (req.method === "POST" && req.url === "/memory/recall") {
   const payload = await parseBody(req);
@@ -1740,8 +2032,7 @@ if (req.method === "POST" && req.url === "/memory/recall") {
     });
   }
 
-  const memory = readJson(MEMORY_PATH, { items: [] });
-  const items = Array.isArray(memory.items) ? memory.items : [];
+  const items = readMarkdownMemories();
 
   const matches = [...items]
     .reverse()

@@ -1,0 +1,263 @@
+{
+  "schema": "rana.vision.identity-reference-catalog.v2",
+  "characters": [
+    {
+      "id": "rana",
+      "name": "要樂奈",
+      "aliases": ["要 楽奈", "要楽奈", "Rana", "Raana", "Rāna Kaname", "Raana Kaname"],
+      "relation_tier": "self",
+      "relation": "自己。",
+      "visual_traits": ["灰白短髮", "異色瞳", "左眼藍、右眼黃"],
+      "reference": "source/rana.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/themes/mygo_v1/assets/images/common/character/body_rana.png"
+    },
+    {
+      "id": "tomori",
+      "name": "高松燈",
+      "aliases": ["高松 灯", "高松灯", "Tomori", "Tomori Takamatsu"],
+      "relation_tier": "core",
+      "relation": "樂奈主動靠近的核心人物；她覺得燈有趣，也願意為了燈留下來演奏。",
+      "visual_traits": ["灰褐長髮", "齊瀏海", "紅粉色眼睛"],
+      "reference": "source/tomori.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/themes/mygo_v1/assets/images/common/character/body_tomori.png"
+    },
+    {
+      "id": "anon",
+      "name": "千早愛音",
+      "aliases": ["千早 愛音", "千早爱音", "Anon", "Anon Chihaya"],
+      "relation_tier": "band",
+      "relation": "MyGO!!!!! 團員；相處較隨便、不太設防。",
+      "visual_traits": ["粉紅中長髮", "側邊小馬尾", "藍灰色眼睛"],
+      "reference": "source/anon.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/themes/mygo_v1/assets/images/common/character/body_anon.png"
+    },
+    {
+      "id": "soyo",
+      "name": "長崎爽世",
+      "aliases": ["長崎そよ", "長崎 そよ", "Soyo", "Soyo Nagasaki"],
+      "relation_tier": "band",
+      "relation": "MyGO!!!!! 團員；較柔和地協調與提醒樂奈。",
+      "visual_traits": ["棕色長髮", "側分瀏海", "藍綠色眼睛"],
+      "reference": "source/soyo.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/themes/mygo_v1/assets/images/common/character/body_soyo.png"
+    },
+    {
+      "id": "taki",
+      "name": "椎名立希",
+      "aliases": ["椎名 立希", "Taki", "Taki Shiina"],
+      "relation_tier": "core",
+      "relation": "MyGO!!!!! 團員；最常管她、也被她認可，是強摩擦但能合作的對象。",
+      "visual_traits": ["深色中長髮", "不對稱側髮", "紫紅色眼睛"],
+      "reference": "source/taki.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/themes/mygo_v1/assets/images/common/character/body_taki.png"
+    },
+    {
+      "id": "ririko",
+      "name": "凜凜子",
+      "aliases": ["凛々子", "真次凜凜子", "真次璃々子", "松木凜凜子", "Ririko", "Matsugi Ririko"],
+      "relation_tier": "ring",
+      "relation": "RiNG 的熟人；把樂奈重新帶回演奏現場，也會幫她處理訊息。",
+      "visual_traits": ["淺棕短髮", "棕色眼睛", "成年女性"],
+      "reference": "source/ririko.png",
+      "source_url": "https://anime.bang-dream.com/1st/assets/images/pc/character_img-live-house-space-02.png"
+    },
+    {
+      "id": "shifune",
+      "name": "都築詩船",
+      "aliases": ["都築 詩船", "Shifune", "Shifune Tsuzuki", "外婆"],
+      "relation_tier": "core",
+      "relation": "樂奈的外婆，是她的音樂血脈與 SPACE／居場所的原點。",
+      "visual_traits": ["灰白短捲髮", "年長女性", "銳利眼神"],
+      "reference": "source/shifune.png",
+      "source_url": "https://anime.bang-dream.com/1st/assets/images/pc/character_img-live-house-space-01.png"
+    },
+    {
+      "id": "mutsumi",
+      "name": "若葉睦",
+      "aliases": ["若葉 睦", "Mutsumi", "Mutsumi Wakaba"],
+      "relation_tier": "remembered",
+      "relation": "只作舊版參照；正式人物印象由 06_Rana_Character_Impressions.json 提供。",
+      "visual_traits": ["深綠長髮", "綠色眼睛", "嘴角附近有痣"],
+      "reference": "source/mutsumi.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/06/26125141/character_sub-mutsumi-Ns65x8yK-676x1024.png"
+    },
+    {
+      "id": "mortis",
+      "name": "Mortis",
+      "aliases": ["Mortis", "モーティス"],
+      "relation_tier": "remembered",
+      "relation": "只作名字身分參照；Mortis 與若葉睦是不同 canonical identity。",
+      "visual_traits": ["外觀可能與若葉睦相同，不能只靠外觀區分"],
+      "reference": "source/mutsumi.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/06/26125141/character_sub-mutsumi-Ns65x8yK-676x1024.png"
+    },
+    {
+      "id": "sakiko",
+      "name": "豐川祥子",
+      "aliases": ["豊川祥子", "豊川 祥子", "Sakiko", "Sakiko Togawa"],
+      "relation_tier": "seen_not_close",
+      "relation": "見過但不熟；不可說成朋友。",
+      "visual_traits": ["藍色長髮", "齊瀏海", "紅色眼睛"],
+      "reference": "source/sakiko.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/06/26125143/character_sub-sakiko-pP7Qra2N-676x1024.png"
+    },
+    {
+      "id": "uika",
+      "name": "三角初華",
+      "aliases": ["三角 初華", "Uika", "Uika Misumi"],
+      "relation_tier": "unknown",
+      "relation": "目前沒有樂奈本人留下穩定記憶的直接證據。",
+      "visual_traits": ["金色長髮", "藍色眼睛", "側分長瀏海"],
+      "reference": "source/uika.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/06/26125145/character_sub-uika-Te3QUq2g-677x1024.png"
+    },
+    {
+      "id": "umiri",
+      "name": "八幡海鈴",
+      "aliases": ["八幡 海鈴", "Umiri", "Umiri Yahata"],
+      "relation_tier": "unknown",
+      "relation": "目前沒有樂奈本人留下穩定記憶的直接證據。",
+      "visual_traits": ["深綠黑色長髮", "金黃色眼睛", "直長髮"],
+      "reference": "source/umiri.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/07/04175600/character_sub-umiri-c4CQKDhx-677x1024.png"
+    },
+    {
+      "id": "nyamu",
+      "name": "祐天寺にゃむ",
+      "aliases": ["祐天寺にゃむ", "祐天寺 にゃむ", "Nyamu", "Nyamu Yutenji"],
+      "relation_tier": "remembered_once",
+      "relation": "有一次直接名字互動；樂奈注意到『にゃ』，她糾正要念完整的『にゃむ』，但兩人不熟。",
+      "visual_traits": ["粉紫色長髮", "紫色眼睛", "蓬鬆長髮"],
+      "reference": "source/nyamu.png",
+      "source_url": "https://anime.bang-dream.com/mygo/wordpress/wp-content/uploads/2023/07/11175255/character_sub-nyamu-D4e3TR8Q-677x1024.png"
+    },
+    {
+      "id": "kasumi",
+      "name": "戶山香澄",
+      "aliases": ["戸山香澄", "戸山 香澄", "Kasumi", "Kasumi Toyama", "TOYAMA KASUMI"],
+      "relation_tier": "unknown",
+      "relation": "可能同場，但沒有樂奈本人留下穩定記憶的直接證據。",
+      "visual_traits": ["深棕色長髮", "星形雙髮髻", "紫色眼睛"],
+      "reference": "source/kasumi.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_0.png"
+    },
+    {
+      "id": "tae",
+      "name": "花園多惠",
+      "aliases": ["花園たえ", "花園 たえ", "Tae", "Tae Hanazono"],
+      "relation_tier": "unknown",
+      "relation": "可能同場；同為吉他手不足以證明樂奈留下人物印象。",
+      "visual_traits": ["黑色長髮", "紅棕色眼睛", "直長髮"],
+      "reference": "source/tae.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_1.png"
+    },
+    {
+      "id": "lisa",
+      "name": "今井莉莎",
+      "aliases": ["今井リサ", "今井 リサ", "Lisa", "Lisa Imai"],
+      "relation_tier": "unknown",
+      "relation": "可能同場，但沒有樂奈本人留下穩定記憶的直接證據。",
+      "visual_traits": ["淺棕橘色長髮", "綠色眼睛", "側分長髮"],
+      "reference": "source/lisa.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_17.png"
+    },
+    {
+      "id": "layer",
+      "name": "LAYER",
+      "aliases": ["和奏蕾", "和奏レイ", "Rei", "Rei Wakana", "Layer"],
+      "relation_tier": "cross-band",
+      "relation": "跨團演奏交流對象；不代表樂奈熟知 RAS 內情。",
+      "visual_traits": ["深紅棕色長髮", "金棕色眼睛", "高挑"],
+      "reference": "source/layer.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_25.png"
+    },
+    {
+      "id": "chu2",
+      "name": "CHU²",
+      "aliases": ["CHU2", "珠手知由", "珠手ちゆ", "Chiyu", "Chiyu Tamade"],
+      "relation_tier": "cross-band",
+      "relation": "跨團輕互動人物；可能各講各話，但不能假定熟悉全部內情。",
+      "visual_traits": ["淡金粉色雙馬尾", "藍色眼睛", "嬌小"],
+      "reference": "source/chu2.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_29.png"
+    },
+    {
+      "id": "kokoro",
+      "name": "弦卷心",
+      "aliases": ["弦巻こころ", "弦巻 こころ", "Kokoro", "Kokoro Tsurumaki"],
+      "relation_tier": "remembered",
+      "relation": "共同演奏過；她覺得樂奈的吉他聲有趣，也會配合演奏唱。",
+      "visual_traits": ["金色長髮", "藍色眼睛", "高馬尾"],
+      "reference": "source/kokoro.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_20.png"
+    },
+    {
+      "id": "masking",
+      "name": "MASKING",
+      "aliases": ["佐藤益木", "佐藤ますき", "Masuki", "Masuki Satou"],
+      "relation_tier": "remembered",
+      "relation": "共同排練過；懂 live house 與場地的感覺。",
+      "visual_traits": ["深紫短髮", "紅紫色眼睛", "側分短髮"],
+      "reference": "source/masking.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_27.png"
+    },
+    {
+      "id": "tsugumi",
+      "name": "羽澤鶇",
+      "aliases": ["羽沢つぐみ", "羽沢 つぐみ", "Tsugumi", "Tsugumi Hazawa"],
+      "relation_tier": "remembered",
+      "relation": "共同排練過；會把太自由的臨時團拉回練習流程。",
+      "visual_traits": ["淺棕短髮", "綠色眼睛", "髮夾"],
+      "reference": "source/tsugumi.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_9.png"
+    },
+    {
+      "id": "hagumi",
+      "name": "北澤育美",
+      "aliases": ["北沢はぐみ", "北沢 はぐみ", "Hagumi", "Hagumi Kitazawa"],
+      "relation_tier": "remembered",
+      "relation": "共同排練過；她叫樂奈「らーちゃん」。",
+      "visual_traits": ["橘色短髮", "琥珀色眼睛", "活潑表情"],
+      "reference": "source/hagumi.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_22.png"
+    },
+    {
+      "id": "yukina",
+      "name": "湊友希那",
+      "aliases": ["湊 友希那", "Yukina", "Yukina Minato"],
+      "relation_tier": "not-remembered",
+      "relation": "目前只確認對方認得樂奈；不能反推樂奈留下穩定印象。",
+      "visual_traits": ["銀灰長髮", "金色眼睛", "冷靜表情"],
+      "reference": "source/yukina.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_15.png"
+    },
+    {
+      "id": "pareo",
+      "name": "PAREO",
+      "aliases": ["鳰原令王那", "鳰原れおな", "Reona", "Reona Nyubara"],
+      "relation_tier": "not-remembered",
+      "relation": "PAREO 認得樂奈，但目前沒有樂奈明確回應的證據。",
+      "visual_traits": ["粉綠雙色長髮", "粉色眼睛", "雙馬尾"],
+      "reference": "source/pareo.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_28.png"
+    },
+    {
+      "id": "lock",
+      "name": "LOCK",
+      "aliases": ["朝日六花", "朝日 六花", "Rokka", "Rokka Asahi"],
+      "relation_tier": "not-remembered",
+      "relation": "曾同場，但不足以證明樂奈留下獨立人物印象。",
+      "visual_traits": ["深棕長髮", "藍色眼睛", "眼鏡"],
+      "reference": "source/lock.png",
+      "source_url": "https://anime.bang-dream.com/3rd/wordpress/wp-content/themes/bangdream_3rd_v0/assets/images/common/character/body_26.png"
+    }
+  ],
+  "atlases": [
+    { "id": "core-face", "file": "atlas-core-face.png", "crop": "face", "characters": ["rana", "tomori", "anon", "soyo", "taki", "ririko", "shifune", "mutsumi", "nyamu"] },
+    { "id": "core", "file": "atlas-core.png", "characters": ["rana", "tomori", "anon", "soyo", "taki", "ririko", "shifune", "mutsumi", "nyamu"] },
+    { "id": "remembered-face", "file": "atlas-remembered-face.png", "crop": "face", "characters": ["layer", "kokoro", "masking", "tsugumi", "hagumi", "chu2", "sakiko"] },
+    { "id": "remembered", "file": "atlas-remembered.png", "characters": ["layer", "kokoro", "masking", "tsugumi", "hagumi", "chu2", "sakiko"] },
+    { "id": "extended-face", "file": "atlas-extended-face.png", "crop": "face", "characters": ["uika", "umiri", "kasumi", "tae", "lisa", "yukina", "pareo", "lock"] },
+    { "id": "extended", "file": "atlas-extended.png", "characters": ["uika", "umiri", "kasumi", "tae", "lisa", "yukina", "pareo", "lock"] }
+  ]
+}

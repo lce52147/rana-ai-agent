@@ -2,6 +2,8 @@ import { buildVisionEvidence } from "./evidence.js";
 import { createVisionRequestId, traceVision } from "./debug.js";
 import { loadInboundImage, loadRepliedDiscordImage } from "./client.js";
 import { identityReferenceCatalog } from "./character_catalog.js";
+import { attachVisionFeedbackPanel, discordPromptMetadata } from "./feedback.js";
+import { buildMediaEvidenceContext } from "./media.js";
 
 const pendingRuns = new Map();
 const DELIVERY_TRACE_TTL_MS = 2 * 60 * 1000;
@@ -377,14 +379,31 @@ export async function buildImageEvidenceContext(prompt, options = {}) {
 
 export function registerVisionGuidance(api) {
   api.on("before_prompt_build", async (event, ctx) => {
+    let built = null;
     try {
-      const built = await buildImageEvidenceContext(event?.prompt, { signal: ctx?.abortSignal });
-      if (!built) return;
+      built = await buildImageEvidenceContext(event?.prompt, { signal: ctx?.abortSignal });
+    } catch (error) {
+      console.warn(`[rana-vision] evidence failed: ${error?.message || String(error)}`);
+      return { prependContext: "圖片分析目前失敗。只能誠實說看不清楚；不得猜角色、不得假裝已辨識。" };
+    }
+    if (!built) {
+      try {
+        const mediaBuilt = await buildMediaEvidenceContext(event?.prompt, { signal: ctx?.abortSignal });
+        if (mediaBuilt) return { prependContext: mediaBuilt.context };
+      } catch (error) {
+        console.warn(`[rana-media] analysis failed: ${error?.message || String(error)}`);
+        return { prependContext: "附件分析失敗。直接說現在看不了這個附件；不得猜內容。" };
+      }
+      return;
+    }
+    try {
+      const discord = discordPromptMetadata(event?.prompt);
       if (ctx?.runId) pendingRuns.set(ctx.runId, {
         requestId: built.requestId,
         channelId: ctx.channelId,
         conversationId: ctx.conversationId,
         payload: built.payload,
+        discord,
       });
       if (ctx?.runId) deliveryTracker.enqueue({
         runId: ctx.runId,
@@ -393,11 +412,13 @@ export function registerVisionGuidance(api) {
         channelId: ctx.channelId,
         conversationId: ctx.conversationId,
         payload: built.payload,
+        userQuestion: built.payload?.userQuestion || "",
+        discord,
       });
       return { prependContext: built.context };
     } catch (error) {
-      console.warn(`[rana-vision] evidence failed: ${error?.message || String(error)}`);
-      return { prependContext: "圖片分析目前失敗。只能誠實說看不清楚；不得猜角色、不得假裝已辨識。" };
+      console.warn(`[rana-vision] delivery state failed: ${error?.message || String(error)}`);
+      return { prependContext: built.context };
     }
   }, { priority: 1000 });
 
@@ -479,15 +500,34 @@ export function registerVisionGuidance(api) {
   api.on("message_sent", async (event, ctx) => {
     const pending = deliveryTracker.take(ctx);
     if (!pending) return;
+    const responseMessageId = event?.messageId ?? event?.metadata?.messageId ?? null;
     await traceVision(pending.requestId, "discord_final_output", {
       content: event?.content,
       success: event?.success,
       error: event?.error,
-      messageId: event?.messageId ?? event?.metadata?.messageId ?? null,
+      messageId: responseMessageId,
       channelId: ctx?.channelId,
       accountId: ctx?.accountId,
       deliveryStage: "message_sent",
     }, { force: true });
+    if (event?.success === false || !responseMessageId) return;
+    try {
+      const feedback = await attachVisionFeedbackPanel({
+        requestId: pending.requestId,
+        requesterId: pending.discord?.requesterId,
+        channelId: pending.discord?.channelId || ctx?.channelId,
+        sourceMessageId: pending.discord?.sourceMessageId,
+        responseMessageId,
+        userQuestion: pending.userQuestion,
+        payload: pending.payload,
+      });
+      await traceVision(pending.requestId, "vision_feedback_panel", feedback, { force: true });
+    } catch (error) {
+      await traceVision(pending.requestId, "vision_feedback_panel_error", {
+        error: String(error?.message || error),
+      }, { force: true });
+      console.warn(`[rana-vision] feedback panel failed: ${error?.message || String(error)}`);
+    }
   });
 }
 

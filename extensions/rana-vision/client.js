@@ -552,7 +552,7 @@ function requireSnowflake(value, label) {
   return text;
 }
 
-async function discordBotToken() {
+export async function discordBotToken() {
   const config = JSON.parse(await readFile(OPENCLAW_CONFIG, "utf8"));
   const token = String(config?.channels?.discord?.token || "").trim();
   if (!token) throw new Error("Discord attachment access is unavailable");
@@ -613,6 +613,52 @@ export async function loadRepliedDiscordImage(channelId, messageId, signal, requ
       error: String(error?.message || error),
     }, { force: true });
     throw error;
+  } finally {
+    request.close();
+  }
+}
+
+export async function loadRepliedDiscordMedia(channelId, messageId, signal, requestId) {
+  const channel = requireSnowflake(channelId, "channel");
+  const message = requireSnowflake(messageId, "reply message");
+  const token = await discordBotToken();
+  const request = abortable(signal, VISION_TIMEOUT_MS);
+  try {
+    const messageUrl = `https://discord.com/api/v10/channels/${channel}/messages/${message}`;
+    const messageResponse = await fetch(messageUrl, {
+      headers: { Authorization: `Bot ${token}` },
+      signal: request.signal,
+    });
+    const payload = await messageResponse.json().catch(() => null);
+    if (!messageResponse.ok) throw new Error(`referenced Discord attachment could not be read (HTTP ${messageResponse.status})`);
+    const attachment = (payload?.attachments || []).find((item) => {
+      const type = String(item?.content_type || "").toLowerCase();
+      const name = String(item?.filename || "").toLowerCase();
+      return /^(?:video|audio)\//.test(type)
+        || type === "application/pdf"
+        || /^text\//.test(type)
+        || /\.(?:mp4|webm|mov|mkv|avi|m4v|mp3|wav|ogg|opus|m4a|flac|aac|pdf|txt|log|md|csv|json|ya?ml|xml)$/i.test(name);
+    });
+    if (!attachment?.url) throw new Error("referenced message has no supported media attachment");
+    const mediaResponse = await fetch(attachment.url, { signal: request.signal });
+    if (!mediaResponse.ok) throw new Error(`referenced media download failed (HTTP ${mediaResponse.status})`);
+    const data = Buffer.from(await mediaResponse.arrayBuffer());
+    return {
+      data,
+      mimeType: String(attachment.content_type || mediaResponse.headers.get("content-type") || "application/octet-stream").split(";")[0],
+      filename: String(attachment.filename || `attachment-${attachment.id || "media"}`),
+      source: String(attachment.url || ""),
+      media: {
+        resolution: "discord_referenced_media_attachment",
+        channel_id: channel,
+        referenced_message_id: message,
+        attachment_id: String(attachment.id || ""),
+        filename: String(attachment.filename || ""),
+        content_type: String(attachment.content_type || ""),
+        url: String(attachment.url || ""),
+        bytes: data.length,
+      },
+    };
   } finally {
     request.close();
   }

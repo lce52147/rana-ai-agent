@@ -1,7 +1,7 @@
 {
   "id": "rana-vision",
   "name": "Rana Vision",
-  "description": "Registers Rana image evidence, canonical identity resolution, impression lookup, and OOGG context.",
+  "description": "Registers Rana image evidence, feedback components, media attachment understanding, canonical identity resolution, and OOGG context.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

@@ -4,7 +4,7 @@ import { registerVisionTool } from "./tool.js";
 const plugin = {
   id: "rana-vision",
   name: "Rana Vision",
-  description: "ToriiGate vision, OCR, canonical identity resolution, Rana impression lookup, and OOGG image context.",
+  description: "ToriiGate vision, feedback components, media attachment understanding, canonical identity resolution, and Rana response context.",
   register(api) {
     registerVisionTool(api);
     registerVisionGuidance(api);

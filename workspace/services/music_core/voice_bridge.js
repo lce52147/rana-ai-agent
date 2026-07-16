@@ -24,8 +24,12 @@ const {
   EmbedBuilder,
   GatewayIntentBits,
   GatewayDispatchEvents,
+  ModalBuilder,
   Options,
+  TextInputBuilder,
+  TextInputStyle,
 } = require('discord.js');
+const { createVisionFeedbackStore, parseVisionFeedbackCustomId } = require('./vision_feedback');
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -64,6 +68,7 @@ const activePlayers = new Set();
 const stayVoiceGuilds = new Set();
 const queuePanels = new Map();
 const guildVolumes = new Map();
+const visionFeedbackStore = createVisionFeedbackStore();
 const DEFAULT_VOLUME = 35;
 const MIN_VOLUME = 0;
 const MAX_VOLUME = 100;
@@ -162,9 +167,18 @@ client.on('error', (err) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton?.()) return;
-  if (!String(interaction.customId || '').startsWith('rana_queue|')) return;
-  await handleQueueButton(interaction);
+  const customId = String(interaction.customId || '');
+  if (interaction.isButton?.() && customId.startsWith('rana_queue|')) {
+    await handleQueueButton(interaction);
+    return;
+  }
+  if (interaction.isButton?.() && customId.startsWith('vf|')) {
+    await handleVisionFeedbackButton(interaction);
+    return;
+  }
+  if (interaction.isModalSubmit?.() && customId.startsWith('vfm|')) {
+    await handleVisionFeedbackModal(interaction);
+  }
 });
 
 // Intercept raw WS packets from Discord for VOICE_STATE_UPDATE + VOICE_SERVER_UPDATE
@@ -942,6 +956,59 @@ async function handleQueueButton(interaction) {
     if (interaction.deferred || interaction.replied) await interaction.followUp(reply);
     else await interaction.reply(reply);
   }
+}
+
+async function feedbackUnauthorized(interaction) {
+  const reply = { content: '這不是你的辨識回饋。', ephemeral: true };
+  if (interaction.deferred || interaction.replied) await interaction.followUp(reply);
+  else await interaction.reply(reply);
+}
+
+async function handleVisionFeedbackButton(interaction) {
+  const parsed = parseVisionFeedbackCustomId(interaction.customId);
+  if (!parsed?.requestId || !parsed.requesterId) return;
+  if (String(interaction.user?.id || '') !== parsed.requesterId) {
+    await feedbackUnauthorized(interaction);
+    return;
+  }
+  const pending = visionFeedbackStore.readPending(parsed.requestId);
+  if (!pending) {
+    await interaction.reply({ content: '這次辨識紀錄已經不在了。', ephemeral: true });
+    return;
+  }
+  if (parsed.action === 'ok') {
+    visionFeedbackStore.record(parsed.requestId, interaction.user.id, 'correct');
+    await interaction.reply({ content: '嗯。記下來了。', ephemeral: true });
+    return;
+  }
+  if (parsed.action === 'wrong') {
+    const input = new TextInputBuilder()
+      .setCustomId('correct_identity')
+      .setLabel('正確是誰？不知道也可以寫不知道')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(80);
+    const modal = new ModalBuilder()
+      .setCustomId(`vfm|${parsed.requestId}|${parsed.requesterId}`)
+      .setTitle('修正圖片辨識')
+      .addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal);
+  }
+}
+
+async function handleVisionFeedbackModal(interaction) {
+  const parsed = parseVisionFeedbackCustomId(interaction.customId);
+  if (!parsed?.requestId || !parsed.requesterId) return;
+  if (String(interaction.user?.id || '') !== parsed.requesterId) {
+    await feedbackUnauthorized(interaction);
+    return;
+  }
+  const correction = String(interaction.fields?.getTextInputValue('correct_identity') || '').trim();
+  const result = visionFeedbackStore.record(parsed.requestId, interaction.user.id, 'incorrect', correction);
+  await interaction.reply({
+    content: result.status === 'recorded' ? '嗯。這張要改。' : '這次辨識紀錄已經不在了。',
+    ephemeral: true,
+  });
 }
 
 function removeQueuedTrack(guildId, query) {

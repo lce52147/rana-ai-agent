@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { __test as clientTest } from "./client.js";
 import { buildVisionEvidence, __test as evidenceTest } from "./evidence.js";
 import { __test as guidanceTest } from "./guidance.js";
+import { __test as feedbackTest } from "./feedback.js";
 import { reverseImageSearch } from "./reverse_search.js";
 import { lookupCharacterImpression, resolveCanonicalIdentities, resolveImageCharacters } from "./character_catalog.js";
 
@@ -21,6 +22,23 @@ test("Vision plugin source does not load Music", async () => {
     const source = await readFile(new URL(`./${file}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /rana-music-tools|tools\/music|sidecars\/music/, file);
   }
+});
+
+test("Vision feedback panel is scoped to the Discord requester", () => {
+  const prompt = [
+    '"chat_id": "channel:1495319712370917396"',
+    '"message_id": "1526665942082261165"',
+    '"sender_id": "1197194412929843231"',
+  ].join("\n");
+  assert.deepEqual(feedbackTest.discordPromptMetadata(prompt), {
+    channelId: "1495319712370917396",
+    sourceMessageId: "1526665942082261165",
+    requesterId: "1197194412929843231",
+  });
+  const components = feedbackTest.visionFeedbackComponents("12345678-abcd", "1197194412929843231");
+  assert.equal(components[0].components.length, 2);
+  assert.match(components[0].components[0].custom_id, /^vf\|ok\|/u);
+  assert.match(components[0].components[1].custom_id, /^vf\|wrong\|/u);
 });
 
 test("ToriiGate prompt sends exactly one image and requests raw observation", () => {

@@ -13,6 +13,7 @@ function compact(value) {
 }
 
 const EVENT_DIRECTION_CONTRACT = "敘述事件時保留動作者、受動者與先後方向；不能把『對方對我做了某事』改成『我對對方做了某事』。人物問題不能補 Core Files 沒有寫的樂團或職位。只有使用者問生日時才能使用生日索引。不確定就少說，不要反轉或補完。";
+const OWNER_REFERENCE_RE = /咳咳咳咳咳（主人）/u;
 
 function withEventDirectionContract(guidance) {
   return guidance ? `${EVENT_DIRECTION_CONTRACT}\n${guidance}` : EVENT_DIRECTION_CONTRACT;
@@ -20,6 +21,10 @@ function withEventDirectionContract(guidance) {
 
 export function buildModelToolGuidance(prompt) {
   const userText = extractUserMessageText(prompt);
+
+  if (OWNER_REFERENCE_RE.test(userText)) {
+    return withEventDirectionContract("這句是在問被提及的『咳咳咳咳咳（主人）』。只回答被問的人；不要先介紹自己、不要標記或稱呼提問者、不要補其他人的資訊。這個人是主人。");
+  }
 
   if (isExplicitWebSearchIntent(userText)) {
     return withEventDirectionContract(`必須先呼叫工具：ollama_web_search({ "query": ${JSON.stringify(stripRanaMention(userText))} })。工具結果只是證據；等結果後再用自己的話短句回答，不要編造最新資訊，也不要提搜尋或工具。`);

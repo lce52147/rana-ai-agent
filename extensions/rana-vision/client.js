@@ -1,6 +1,9 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { readFile, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { traceVision } from "./debug.js";
 import { characterAtlases } from "./character_catalog.js";
 
@@ -13,6 +16,7 @@ const VISION_TIMEOUT_MS = 90000;
 const VISION_MODEL_CACHE_MS = 60000;
 const VISUAL_COMPARISON_BUDGET_MS = 45000;
 const VISUAL_COMPARISON_REQUEST_TIMEOUT_MS = 15000;
+const execFileAsync = promisify(execFile);
 
 let visionModelCache = { checkedAt: 0, id: "", baseUrl: "" };
 
@@ -97,6 +101,35 @@ function imageMime(filePath) {
   if (extension === ".webp") return "image/webp";
   if (extension === ".gif") return "image/gif";
   return "image/png";
+}
+
+async function normalizeVisionImage(filePath, mimeType) {
+  // llama.cpp's OpenAI-compatible image loader rejects WebP data URLs on this
+  // deployment. Normalize unsupported inbound formats before every Vision call.
+  if (mimeType !== "image/webp" && mimeType !== "image/gif") {
+    return { image: await readFile(filePath), mimeType };
+  }
+
+  const outputPath = path.join(tmpdir(), `rana-vision-${randomUUID()}.png`);
+  try {
+    await execFileAsync("ffmpeg", ["-v", "error", "-y", "-i", filePath, "-frames:v", "1", outputPath], { windowsHide: true });
+    return { image: await readFile(outputPath), mimeType: "image/png" };
+  } finally {
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
+async function normalizeVisionBuffer(image, mimeType) {
+  if (mimeType !== "image/webp" && mimeType !== "image/gif") return { image, mimeType };
+  const inputPath = path.join(tmpdir(), `rana-vision-${randomUUID()}.${mimeType === "image/webp" ? "webp" : "gif"}`);
+  const outputPath = path.join(tmpdir(), `rana-vision-${randomUUID()}.png`);
+  try {
+    await writeFile(inputPath, image);
+    await execFileAsync("ffmpeg", ["-v", "error", "-y", "-i", inputPath, "-frames:v", "1", outputPath], { windowsHide: true });
+    return { image: await readFile(outputPath), mimeType: "image/png" };
+  } finally {
+    await Promise.all([unlink(inputPath).catch(() => {}), unlink(outputPath).catch(() => {})]);
+  }
 }
 
 function abortable(signal, timeoutMs) {
@@ -216,6 +249,7 @@ function visionUserContent(image, mimeType) {
       text: [
         "Observe this image without guessing a character name, franchise, or relationship.",
         "Report only visible evidence: medium, subject type, people count, OCR text, logos, distinctive features, scene, and a concise factual summary.",
+        "Keep OCR text verbatim. Write distinctive features, scene, and summary in Traditional Chinese.",
         "Return one JSON object only. Do not use Markdown.",
       ].join("\n"),
     },
@@ -531,15 +565,16 @@ function assertInboundImage(filePath) {
 export async function loadInboundImage(imagePath) {
   const resolvedPath = assertInboundImage(imagePath);
   const mimeType = imageMime(resolvedPath);
+  const normalized = await normalizeVisionImage(resolvedPath, mimeType);
   return {
-    image: await readFile(resolvedPath),
-    mimeType,
+    image: normalized.image,
+    mimeType: normalized.mimeType,
     source: resolvedPath,
     media: {
       resolution: "openclaw_inbound_file",
       local_path: resolvedPath,
       filename: path.basename(resolvedPath),
-      content_type: mimeType,
+      content_type: normalized.mimeType,
       url: "",
       proxy_url: "",
     },
@@ -565,33 +600,48 @@ export async function loadRepliedDiscordImage(channelId, messageId, signal, requ
   const token = await discordBotToken();
   const request = abortable(signal, VISION_TIMEOUT_MS);
   try {
-    const messageUrl = `https://discord.com/api/v10/channels/${channel}/messages/${message}`;
-    const messageResponse = await fetch(messageUrl, {
-      headers: { Authorization: `Bot ${token}` },
-      signal: request.signal,
-    });
-    const payload = await messageResponse.json().catch(() => null);
-    await traceVision(requestId, "discord_referenced_message", {
-      endpoint: messageUrl,
-      http_status: messageResponse.status,
-      channel_id: channel,
-      referenced_message_id: message,
-      attachments: Array.isArray(payload?.attachments) ? payload.attachments : [],
-    }, { force: !messageResponse.ok });
-    if (!messageResponse.ok) throw new Error(`referenced Discord image could not be read (HTTP ${messageResponse.status})`);
-    const attachment = (payload?.attachments || []).find((item) => /^image\//i.test(String(item?.content_type || "")) || /\.(png|jpe?g|webp|gif)$/i.test(String(item?.filename || "")));
+    let resolvedMessageId = message;
+    let attachment = null;
+    for (let depth = 0; depth < 3; depth += 1) {
+      const messageUrl = `https://discord.com/api/v10/channels/${channel}/messages/${resolvedMessageId}`;
+      const messageResponse = await fetch(messageUrl, {
+        headers: { Authorization: `Bot ${token}` },
+        signal: request.signal,
+      });
+      const payload = await messageResponse.json().catch(() => null);
+      await traceVision(requestId, "discord_referenced_message", {
+        endpoint: messageUrl,
+        http_status: messageResponse.status,
+        channel_id: channel,
+        requested_message_id: message,
+        referenced_message_id: resolvedMessageId,
+        reference_depth: depth,
+        attachments: Array.isArray(payload?.attachments) ? payload.attachments : [],
+      }, { force: !messageResponse.ok });
+      if (!messageResponse.ok) throw new Error(`referenced Discord image could not be read (HTTP ${messageResponse.status})`);
+      attachment = (payload?.attachments || []).find((item) => /^image\//i.test(String(item?.content_type || "")) || /\.(png|jpe?g|webp|gif)$/i.test(String(item?.filename || "")));
+      if (attachment?.url) break;
+      const nextMessageId = String(payload?.message_reference?.message_id || "").trim();
+      if (!/^\d{17,20}$/.test(nextMessageId) || nextMessageId === resolvedMessageId) break;
+      resolvedMessageId = nextMessageId;
+    }
     if (!attachment?.url) throw new Error("referenced message has no image attachment");
     const imageResponse = await fetch(attachment.url, { signal: request.signal });
     if (!imageResponse.ok) throw new Error(`referenced image download failed (HTTP ${imageResponse.status})`);
-    const image = Buffer.from(await imageResponse.arrayBuffer());
-    const mimeType = String(attachment.content_type || imageResponse.headers.get("content-type") || "image/png").split(";")[0];
+    const downloadedImage = Buffer.from(await imageResponse.arrayBuffer());
+    const downloadedMimeType = String(attachment.content_type || imageResponse.headers.get("content-type") || "image/png").split(";")[0];
+    const normalized = await normalizeVisionBuffer(downloadedImage, downloadedMimeType);
+    const image = normalized.image;
+    const mimeType = normalized.mimeType;
     const media = {
       resolution: "discord_referenced_attachment",
       channel_id: channel,
-      referenced_message_id: message,
+      requested_message_id: message,
+      referenced_message_id: resolvedMessageId,
       attachment_id: String(attachment.id || ""),
       filename: String(attachment.filename || ""),
       content_type: mimeType,
+      original_content_type: downloadedMimeType,
       url: String(attachment.url || ""),
       proxy_url: String(attachment.proxy_url || ""),
       width: attachment.width,

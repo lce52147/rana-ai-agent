@@ -15,6 +15,8 @@
 
 require('dotenv').config();
 const http = require('http');
+const path = require('path');
+const { pathToFileURL } = require('url');
 const WebSocket = require('ws');
 const {
   ActionRowBuilder,
@@ -971,8 +973,16 @@ async function handleVisionFeedbackButton(interaction) {
     await feedbackUnauthorized(interaction);
     return;
   }
+  // Acknowledge slow Vision work before Discord's 3-second interaction limit.
+  if (parsed.action === 'retry' || parsed.action === 'describe') {
+    await interaction.deferReply({ ephemeral: true });
+  }
   const pending = visionFeedbackStore.readPending(parsed.requestId);
   if (!pending) {
+    if (interaction.deferred) {
+      await interaction.editReply({ content: "這個辨識回饋已過期。" });
+      return;
+    }
     await interaction.reply({ content: '這次辨識紀錄已經不在了。', ephemeral: true });
     return;
   }
@@ -993,6 +1003,20 @@ async function handleVisionFeedbackButton(interaction) {
       .setTitle('修正圖片辨識')
       .addComponents(new ActionRowBuilder().addComponents(input));
     await interaction.showModal(modal);
+    return;
+  }
+  if (parsed.action === 'retry' || parsed.action === 'describe') {
+    try {
+      const actionModule = await import(pathToFileURL(path.resolve(
+        __dirname,
+        '../../../extensions/rana-vision/feedback_action.js',
+      )).href);
+      const content = await actionModule.runVisionFeedbackAction(pending, parsed.action);
+      await interaction.editReply({ content: String(content || '看不清楚。').slice(0, 1900) });
+    } catch (error) {
+      log('VISION_FEEDBACK', `${parsed.action} failed request=${parsed.requestId}: ${error?.message || error}`);
+      await interaction.editReply({ content: '這次重新看圖失敗了。' });
+    }
   }
 }
 
@@ -1114,6 +1138,36 @@ const server = http.createServer(async (req, res) => {
       voice_states_cache_size: voiceStates.size,
       reconnecting_guilds: [...reconnecting.keys()],
       pending_voice_joins: [...voicePending.keys()],
+    });
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/voice/debug')) {
+    if (!discordReady) return respond(503, { error: 'Discord not ready' });
+    const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
+    const guildId = url.searchParams.get('guild_id');
+    if (!guildId) return respond(400, { error: 'Missing guild_id' });
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return respond(404, { error: `Guild ${guildId} not found` });
+    return respond(200, {
+      guild_id: guild.id,
+      guild_name: guild.name,
+      bot_voice_channel_id: guildChannels.get(guildId) || null,
+      bridge_voice_state: voiceStates.get(guildId) || null,
+      discord_voice_states: [...guild.voiceStates.cache.values()].map(s => ({
+        user_id: s.id,
+        channel_id: s.channelId || null,
+        member_cached: Boolean(s.member),
+      })),
+      voice_channels: [...guild.channels.cache.values()]
+        .filter(c => c.type === 2 || c.type === 13)
+        .map(c => ({
+          channel_id: c.id,
+          channel_name: c.name,
+          members: [...c.members.values()].map(m => ({
+            user_id: m.id,
+            bot: Boolean(m.user?.bot),
+          })),
+        })),
     });
   }
 

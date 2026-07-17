@@ -6,11 +6,11 @@ import json
 import time
 
 guild_id = '1486679037605842944'
-channel_id = '1495319712370917396'
+channel_id = '1486679038696358003'
 
 # MyGO official video
 payload = {
-    'url': 'https://www.youtube.com/watch?v=YVWIyDg-wgc',
+    'url': 'https://www.youtube.com/watch?v=dpGPOzbBfTY',
     'guild_id': guild_id,
     'channel_id': channel_id,
     'requester': 'direct_exec'

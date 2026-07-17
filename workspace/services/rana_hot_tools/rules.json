@@ -1,31 +1,54 @@
 {
-  "version": 1,
+  "version": 2,
   "fallbacks": [
     {
       "id": "chores",
-      "patterns": ["洗碗", "洗盤", "洗杯", "打掃", "掃地", "拖地", "倒垃圾"],
-      "reply": "不要。"
+      "patterns": ["洗碗", "洗衣", "倒垃圾", "家事"],
+      "reply": "無聊。"
     },
     {
       "id": "matcha",
-      "patterns": ["抹茶", "芭菲", "甜點", "蛋糕"],
+      "patterns": ["抹茶", "抹茶蛋糕", "抹茶拿鐵"],
       "reply": "抹茶。我要。"
     },
     {
       "id": "greetings",
-      "patterns": ["早安", "午安", "晚安", "嗨", "你好", "哈囉", "hello", "hi"],
+      "patterns": ["早安", "晚安", "嗨", "hello", "hi"],
       "reply": "嗯。"
     },
     {
       "id": "requests",
-      "patterns": ["幫我", "拜託", "求你", "可以", "能不能", "可不可以"],
-      "reply": "不行。"
+      "patterns": ["幫我", "拜託", "可以嗎"],
+      "reply": "不要。"
     }
   ],
   "defaultReply": "無聊。",
   "cooldown": {
     "enabled": true,
     "seconds": 20
+  },
+  "security": {
+    "ownerIds": [
+      "376320922484867073",
+      "1197194412929843231"
+    ],
+    "memoryWriteRoles": [
+      "貓飼主",
+      "1487852289397100577"
+    ],
+    "memoryDeleteRoles": [
+      "貓飼主",
+      "1487852289397100577"
+    ],
+    "residentRoles": [
+      "抹茶",
+      "1488164179125993655"
+    ],
+    "toolUseRoles": [
+      "抹茶",
+      "1488164179125993655",
+      "常駐"
+    ]
   },
   "reactions": [
     {
@@ -41,23 +64,23 @@
     {
       "id": "anon",
       "patterns": ["愛音", "Anon", "anon"],
-      "reply": "愛音。吵。"
+      "reply": "愛音。很吵。"
     },
     {
       "id": "soyo",
       "patterns": ["爽世", "Soyo", "soyo"],
-      "reply": "爽世。麻煩。"
+      "reply": "爽世。抹茶蛋糕。我要。"
     },
     {
       "id": "mutsumi",
       "patterns": ["睦", "Mutsumi", "mutsumi"],
-      "reply": "睦。嗯。"
+      "reply": "睦。怪。像沒醒。"
     }
   ],
   "reminders": {
     "enabled": true,
     "reply": "嗯。記了。",
-    "listReply": "提醒。{items}"
+    "listReply": "記得的。{items}"
   },
   "memory": {
     "enabled": true,
@@ -66,7 +89,7 @@
   },
   "urlSummary": {
     "enabled": true,
-    "reply": "我看。等一下。"
+    "reply": "重點。"
   },
   "weather": {
     "enabled": true,

@@ -2,7 +2,7 @@ import { buildVisionEvidence } from "./evidence.js";
 import { createVisionRequestId, traceVision } from "./debug.js";
 import { loadInboundImage, loadRepliedDiscordImage } from "./client.js";
 import { identityReferenceCatalog } from "./character_catalog.js";
-import { attachVisionFeedbackPanel, discordPromptMetadata } from "./feedback.js";
+import { attachVisionFeedbackPanel, discordPromptMetadata, resolveDiscordResponseMessageId } from "./feedback.js";
 import { buildMediaEvidenceContext } from "./media.js";
 
 const pendingRuns = new Map();
@@ -20,13 +20,21 @@ function createDeliveryTracker(ttlMs = DELIVERY_TRACE_TTL_MS) {
     if (!pending.length) return -1;
     const channelId = context?.channelId;
     const conversationId = context?.conversationId;
-    if (channelId || conversationId) {
+    // Outbound Discord hooks report `channelId: "discord"` and put the
+    // actual Discord channel snowflake in `conversationId`.  Matching both
+    // fields as if they were the same identifier drops every real delivery.
+    // Prefer the concrete conversation id; only then fall back to channel id.
+    if (conversationId) {
       const matched = pending.findIndex((entry) =>
-        (!channelId || entry.channelId === channelId) &&
-        (!conversationId || entry.conversationId === conversationId));
+        entry.conversationId === conversationId || entry.channelId === conversationId);
       if (matched >= 0) return matched;
     }
-    return 0;
+    if (channelId) {
+      const matched = pending.findIndex((entry) =>
+        entry.channelId === channelId || entry.conversationId === channelId);
+      if (matched >= 0) return matched;
+    }
+    return pending.length === 1 ? 0 : -1;
   }
 
   return {
@@ -69,6 +77,59 @@ function firstText(value) {
   if (Array.isArray(value)) return value.map(firstText).filter(Boolean).join("\n");
   if (value && typeof value === "object") return firstText(value.text) || firstText(value.content) || firstText(value.body);
   return "";
+}
+
+function lastAssistantText(messages) {
+  if (!Array.isArray(messages)) return "";
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (String(message?.role || "").toLowerCase() === "assistant") {
+      const content = firstText(message?.content);
+      if (content.trim()) return content.trim();
+    }
+  }
+  return "";
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function attachFeedbackAfterAgentEnd(pending, event) {
+  const content = lastAssistantText(event?.messages);
+  const channelId = pending?.discord?.channelId || pending?.conversationId || pending?.channelId;
+  if (!content || !channelId) return { status: "skipped", reason: "agent_end_response_unavailable" };
+
+  // The embedded Discord delivery path runs `before_message_write` but does
+  // not emit global message_sent hooks. Poll the just-sent bot message instead
+  // of leaving the panel permanently detached on that production path.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const responseMessageId = await resolveDiscordResponseMessageId({
+      channelId,
+      content,
+      notBefore: pending.queuedAt,
+    });
+    if (responseMessageId) {
+      const feedback = await attachVisionFeedbackPanel({
+        requestId: pending.requestId,
+        requesterId: pending.discord?.requesterId,
+        channelId,
+        sourceMessageId: pending.discord?.sourceMessageId,
+        responseMessageId,
+        userQuestion: pending.userQuestion,
+        payload: pending.payload,
+      });
+      await traceVision(pending.requestId, "vision_feedback_panel", {
+        ...feedback,
+        deliveryStage: "agent_end_poll",
+      }, { force: true });
+      return feedback;
+    }
+    await delay(1000);
+  }
+  const result = { status: "skipped", reason: "discord_response_not_found_after_agent_end" };
+  await traceVision(pending.requestId, "vision_feedback_panel", result, { force: true });
+  return result;
 }
 
 function normalizedIdentityText(value) {
@@ -245,7 +306,11 @@ function imageRequest(prompt, loaders = {}) {
   const attachmentPath = imageAttachmentPath(prompt);
   if (attachmentPath) return { userText, load: (signal, requestId) => loadInbound(attachmentPath, signal, requestId) };
   const reply = repliedImageReference(prompt);
-  if (reply) return { userText, load: (signal, requestId) => loadReply(reply.channel, reply.message, signal, requestId) };
+  if (reply) return {
+    userText,
+    sourceMessageId: reply.message,
+    load: (signal, requestId) => loadReply(reply.channel, reply.message, signal, requestId),
+  };
   if (hasImagePlaceholder(prompt)) {
     return {
       userText,
@@ -363,7 +428,7 @@ export async function buildImageEvidenceContext(prompt, options = {}) {
     const context = ooggContext(evidence, userQuestion);
     await trace(requestId, "final_oogg_payload", payload, { force: true });
     console.log(`[rana-vision] request=${requestId} evidence ready identity=${payload.imageUnderstanding.primaryCharacter?.canonicalName || "unknown"}`);
-    return { requestId, context, evidence, payload };
+    return { requestId, context, evidence, payload, sourceMessageId: request.sourceMessageId || "" };
   } catch (error) {
     // A reply reference is only a candidate.  Fetching the referenced Discord
     // message is the authoritative check; do not inject an image failure into
@@ -397,7 +462,13 @@ export function registerVisionGuidance(api) {
       return;
     }
     try {
-      const discord = discordPromptMetadata(event?.prompt);
+      const promptDiscord = discordPromptMetadata(event?.prompt);
+      const discord = {
+        ...promptDiscord,
+        // A reply can be a text-only question about an earlier image. Feedback
+        // must fetch that image message again, not the intervening question.
+        sourceMessageId: built.sourceMessageId || promptDiscord.sourceMessageId,
+      };
       if (ctx?.runId) pendingRuns.set(ctx.runId, {
         requestId: built.requestId,
         channelId: ctx.channelId,
@@ -446,6 +517,15 @@ export function registerVisionGuidance(api) {
       error: event?.error,
       durationMs: event?.durationMs,
     }, { force: true });
+    if (event?.success) {
+      void attachFeedbackAfterAgentEnd(pending, event).catch(async (error) => {
+        await traceVision(pending.requestId, "vision_feedback_panel_error", {
+          error: String(error?.message || error),
+          deliveryStage: "agent_end_poll",
+        }, { force: true });
+        console.warn(`[rana-vision] feedback panel failed: ${error?.message || String(error)}`);
+      });
+    }
   });
 
   api.on("before_message_write", (event, ctx) => {
@@ -500,7 +580,13 @@ export function registerVisionGuidance(api) {
   api.on("message_sent", async (event, ctx) => {
     const pending = deliveryTracker.take(ctx);
     if (!pending) return;
-    const responseMessageId = event?.messageId ?? event?.metadata?.messageId ?? null;
+    let responseMessageId = event?.messageId ?? event?.metadata?.messageId ?? null;
+    if (!responseMessageId) {
+      responseMessageId = await resolveDiscordResponseMessageId({
+        channelId: pending.discord?.channelId || ctx?.conversationId || ctx?.channelId,
+        content: event?.content,
+      });
+    }
     await traceVision(pending.requestId, "discord_final_output", {
       content: event?.content,
       success: event?.success,
@@ -543,6 +629,7 @@ export const __test = {
   repliedImageReference,
   stripRanaMention,
   createDeliveryTracker,
+  lastAssistantText,
   guardVisionIdentityOutput,
   imageAnalysisStatus,
   mentionedIdentityIds,

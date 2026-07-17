@@ -16,6 +16,15 @@ test("Vision feedback custom IDs are request and requester scoped", () => {
     requesterId: "1197194412929843231",
   });
   assert.equal(parseVisionFeedbackCustomId("vf|ok|bad|someone"), null);
+  assert.equal(parseVisionFeedbackCustomId("vf|invalid|12345678-abcd|1197194412929843231"), null);
+  assert.equal(parseVisionFeedbackCustomId("vf|retry|12345678-abcd|1197194412929843231").action, "retry");
+  assert.equal(parseVisionFeedbackCustomId("vf|describe|12345678-abcd|1197194412929843231").action, "describe");
+  assert.deepEqual(parseVisionFeedbackCustomId("vfm|12345678-abcd|1197194412929843231"), {
+    type: "modal",
+    action: "wrong",
+    requestId: "12345678-abcd",
+    requesterId: "1197194412929843231",
+  });
 });
 
 test("Vision feedback store preserves pending evidence and correction", async () => {
@@ -27,10 +36,25 @@ test("Vision feedback store preserves pending evidence and correction", async ()
     finalIdentity: { canonicalId: "tomori", confidence: "high" },
   }), "utf8");
   const store = createVisionFeedbackStore(root);
-  const recorded = store.record("12345678-abcd", "1197194412929843231", "incorrect", "要樂奈");
+  const recorded = store.record("12345678-abcd", "1197194412929843231", "incorrect", "高松燈");
   assert.equal(recorded.status, "recorded");
   assert.equal(recorded.result.verdict, "incorrect");
-  assert.equal(recorded.result.correction, "要樂奈");
+  assert.equal(recorded.result.correction, "高松燈");
   const log = await readFile(store.logPath, "utf8");
-  assert.match(log, /"correction":"要樂奈"/u);
+  assert.match(log, /"correction":"高松燈"/u);
+});
+
+test("incorrect feedback can still record an empty correction", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "rana-vision-feedback-"));
+  const pendingDir = path.join(root, "pending");
+  await mkdir(pendingDir, { recursive: true });
+  await writeFile(path.join(pendingDir, "feedback-456.json"), JSON.stringify({
+    requestId: "feedback-456",
+    requesterId: "1197194412929843231",
+  }), "utf8");
+  const store = createVisionFeedbackStore(root);
+  const recorded = store.record("feedback-456", "1197194412929843231", "incorrect");
+  assert.equal(recorded.status, "recorded");
+  assert.equal(recorded.result.verdict, "incorrect");
+  assert.equal(recorded.result.correction, "");
 });

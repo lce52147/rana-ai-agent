@@ -81,6 +81,18 @@ YTDLP_OPTS: dict = {
 }
 
 PLAYLIST_LIMIT = int(os.getenv("PLAYLIST_LIMIT", "25"))
+PROTECTED_BARE_NOUNS = {
+    "ave mujica",
+    "avemujica",
+    "bang dream",
+    "bandori",
+    "crychic",
+    "haneoka",
+    "mygo",
+    "mygo!!!!!",
+    "ring",
+    "tsukinomori",
+}
 
 # Inject cookie file if present (needed for Bilibili login-gated content)
 if os.path.isfile(_COOKIE_FILE):
@@ -148,6 +160,14 @@ app = FastAPI(
 def _is_bilibili_media_url(url: str) -> bool:
     lowered = (url or "").lower()
     return "bilivideo.com" in lowered or "akamaized.net/upgcxcode" in lowered or "/upgcxcode/" in lowered
+
+
+def _normalize_bare_noun(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().strip("「」『』\"'.,!?！？。")).lower()
+
+
+def _is_protected_bare_noun(value: str) -> bool:
+    return _normalize_bare_noun(value) in PROTECTED_BARE_NOUNS
 
 
 def _media_headers(headers: Optional[dict], source_url: str) -> dict:
@@ -572,6 +592,13 @@ async def play(req: PlayRequest):
         req.guild_id, req.channel_id, req.url, req.requester,
     )
 
+    if not re.match(r"^https?://", req.url, flags=re.I) and _is_protected_bare_noun(req.url):
+        return PlayResponse(
+            status="error",
+            message="bare lore noun is not a play request",
+            llm_hint="這是名字，不是播放指令。要放歌要明確說播放或 play。",
+        )
+
     # Ensure voice_bridge is initialized (on-demand, idempotent)
     await ensure_voice_bridge_ready()
 
@@ -618,6 +645,7 @@ async def play(req: PlayRequest):
             f"{VOICE_BRIDGE}/voice/play",
             json=payload,
             headers={"Content-Type": "application/json", "Authorization": ""},
+            timeout=aiohttp.ClientTimeout(total=45),
         ) as resp:
             bridge_body = await resp.json()
             bridge_status = bridge_body.get("status", "")
@@ -647,7 +675,7 @@ async def play(req: PlayRequest):
                 )
             else:
                 # voice_bridge returned an error
-                err_msg = bridge_body.get("message", str(bridge_body))
+                err_msg = bridge_body.get("message") or bridge_body.get("error") or str(bridge_body) or f"HTTP {resp.status}"
                 log.warning("[VOICE_BRIDGE] Error: %s", err_msg)
                 return PlayResponse(
                     status     = "extracted",
@@ -658,9 +686,22 @@ async def play(req: PlayRequest):
                     thumbnail  = info.get("thumbnail"),
                     uploader   = info.get("uploader"),
                     message    = err_msg,
-                    llm_hint   = f"Extracted but voice bridge error: {err_msg}",
+                    llm_hint   = f"抽到音源了，但語音播放失敗：{err_msg}",
                 )
 
+    except asyncio.TimeoutError:
+        log.error("[VOICE_BRIDGE] Playback request timed out")
+        return PlayResponse(
+            status     = "extracted",
+            title      = info["title"],
+            stream_url = None if info.get("playlist") else info["stream_url"],
+            duration   = info.get("duration"),
+            platform   = "Playlist" if info.get("playlist") else info.get("platform"),
+            thumbnail  = None if info.get("playlist") else info.get("thumbnail"),
+            uploader   = None if info.get("playlist") else info.get("uploader"),
+            message    = "voice bridge playback timeout",
+            llm_hint   = "抽到音源了，但進語音播放逾時。確認你在語音頻道，或再叫我一次。",
+        )
     except aiohttp.ClientConnectorError:
         log.warning("[VOICE_BRIDGE] Offline — returning extracted info without playback")
         return PlayResponse(
@@ -678,7 +719,8 @@ async def play(req: PlayRequest):
             ),
         )
     except Exception as e:
-        log.error("[VOICE_BRIDGE] Unexpected error: %s", e)
+        err_msg = str(e) or type(e).__name__
+        log.error("[VOICE_BRIDGE] Unexpected error: %s", err_msg)
         return PlayResponse(
             status     = "extracted",
             title      = info["title"],
@@ -687,8 +729,8 @@ async def play(req: PlayRequest):
             platform   = "Playlist" if info.get("playlist") else info.get("platform"),
             thumbnail  = None if info.get("playlist") else info.get("thumbnail"),
             uploader   = None if info.get("playlist") else info.get("uploader"),
-            message    = str(e),
-            llm_hint   = f"Extraction OK but playback failed: {e}",
+            message    = err_msg,
+            llm_hint   = f"抽到音源了，但播放失敗：{err_msg}",
         )
 
 

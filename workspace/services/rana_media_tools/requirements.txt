@@ -1,3 +1,2 @@
 claude-real-video==0.5.2
-faster-whisper==1.2.1
 PyMuPDF==1.26.3

@@ -11,7 +11,6 @@ import sys
 
 TEXT_EXTENSIONS = {".txt", ".log", ".md", ".csv", ".json", ".yaml", ".yml", ".xml"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".opus", ".m4a", ".flac", ".aac"}
 
 
 def read_text(path: Path, limit: int = 120_000) -> str:
@@ -62,36 +61,7 @@ def media_probe(path: Path) -> dict:
         return {}
 
 
-def transcribe(path: Path, model_name: str) -> dict:
-    try:
-        from faster_whisper import WhisperModel
-    except Exception as error:
-        return {"status": "unavailable", "error": f"faster-whisper unavailable: {error}"}
-
-    try:
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segments, info = model.transcribe(str(path), beam_size=3, vad_filter=True)
-        items = []
-        for segment in segments:
-            text = str(segment.text or "").strip()
-            if text:
-                items.append({
-                    "start": round(float(segment.start), 2),
-                    "end": round(float(segment.end), 2),
-                    "text": text,
-                })
-        return {
-            "status": "ok",
-            "language": getattr(info, "language", None),
-            "language_probability": getattr(info, "language_probability", None),
-            "segments": items,
-            "text": " ".join(item["text"] for item in items)[:120_000],
-        }
-    except Exception as error:
-        return {"status": "unavailable", "error": str(error)}
-
-
-def analyze_video(path: Path, output: Path, max_frames: int, do_transcribe: bool, whisper_model: str) -> dict:
+def analyze_video(path: Path, output: Path, max_frames: int) -> dict:
     crv = Path(sys.executable).with_name("crv.exe")
     if not crv.exists():
         raise RuntimeError(f"CRV executable not found: {crv}")
@@ -143,23 +113,14 @@ def analyze_video(path: Path, output: Path, max_frames: int, do_transcribe: bool
         "frames": [str(item) for item in frames],
         "grids": [str(item) for item in grids],
         "probe": media_probe(path),
-        "transcript": transcribe(path, whisper_model) if do_transcribe else {"status": "skipped"},
         "crv_stdout": completed.stdout[-4000:],
     }
 
 
-def analyze(path: Path, output: Path, max_frames: int, do_transcribe: bool, whisper_model: str) -> dict:
+def analyze(path: Path, output: Path, max_frames: int) -> dict:
     extension = path.suffix.lower()
     if extension in VIDEO_EXTENSIONS:
-        return analyze_video(path, output, max_frames, do_transcribe, whisper_model)
-    if extension in AUDIO_EXTENSIONS:
-        return {
-            "status": "ok",
-            "kind": "audio",
-            "source": str(path),
-            "probe": media_probe(path),
-            "transcript": transcribe(path, whisper_model),
-        }
+        return analyze_video(path, output, max_frames)
     if extension == ".pdf":
         text, pages = pdf_text(path)
         return {
@@ -184,8 +145,6 @@ def main() -> int:
     parser.add_argument("source")
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-frames", type=int, default=18)
-    parser.add_argument("--transcribe", action="store_true")
-    parser.add_argument("--whisper-model", default=os.environ.get("RANA_MEDIA_WHISPER_MODEL", "base"))
     args = parser.parse_args()
 
     source = Path(args.source).resolve()
@@ -194,7 +153,7 @@ def main() -> int:
         print(json.dumps({"status": "error", "error": "source file not found"}, ensure_ascii=True))
         return 2
     try:
-        result = analyze(source, output, max(3, min(args.max_frames, 36)), args.transcribe, args.whisper_model)
+        result = analyze(source, output, max(3, min(args.max_frames, 36)))
         print(json.dumps(result, ensure_ascii=True))
         return 0
     except Exception as error:

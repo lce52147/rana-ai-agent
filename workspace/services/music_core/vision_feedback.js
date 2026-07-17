@@ -16,6 +16,7 @@ function snowflake(value) {
 function parseVisionFeedbackCustomId(value) {
   const parts = String(value || '').split('|');
   if (parts[0] === 'vf' && parts.length === 4) {
+    if (!['ok', 'wrong', 'retry', 'describe'].includes(parts[1])) return null;
     const parsed = {
       type: 'button',
       action: parts[1],

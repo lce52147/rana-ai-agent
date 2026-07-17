@@ -15,6 +15,40 @@ function requestId(value) {
   return /^[a-zA-Z0-9-]{8,64}$/.test(text) ? text : "";
 }
 
+function comparableContent(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * OpenClaw's public `message_sent` plugin event intentionally omits the
+ * Discord snowflake. Resolve the just-sent bot message from the channel using
+ * its exact outgoing content before we PATCH components onto it.
+ */
+export async function resolveDiscordResponseMessageId(options = {}) {
+  const channelId = snowflake(options.channelId);
+  const expectedContent = comparableContent(options.content);
+  const notBefore = Number(options.notBefore || 0);
+  if (!channelId || !expectedContent) return "";
+
+  const fetchImpl = options.fetchImpl || fetch;
+  const token = options.token || await discordBotToken();
+  const headers = { Authorization: `Bot ${token}` };
+  const meResponse = await fetchImpl("https://discord.com/api/v10/users/@me", { headers });
+  const me = await meResponse.json().catch(() => null);
+  const botId = snowflake(me?.id);
+  if (!meResponse.ok || !botId) return "";
+
+  const messagesResponse = await fetchImpl(`https://discord.com/api/v10/channels/${channelId}/messages?limit=25`, { headers });
+  const messages = await messagesResponse.json().catch(() => null);
+  if (!messagesResponse.ok || !Array.isArray(messages)) return "";
+  const match = messages.find((message) =>
+    snowflake(message?.author?.id) === botId &&
+    comparableContent(message?.content) === expectedContent &&
+    (!Number.isFinite(notBefore) || notBefore <= 0 || Date.parse(message?.timestamp || "") >= notBefore - 2000) &&
+    snowflake(message?.id));
+  return snowflake(match?.id);
+}
+
 export function discordPromptMetadata(prompt) {
   const text = String(prompt || "");
   const channelFromChat = text.match(/"chat_id"\s*:\s*"channel:(\d{17,20})"/i)?.[1] || "";
@@ -43,6 +77,22 @@ export function visionFeedbackComponents(runId, requesterId) {
         style: 4,
         label: "認錯了",
         custom_id: `vf|wrong|${cleanRunId}|${cleanRequester}`,
+      },
+    ],
+  }, {
+    type: 1,
+    components: [
+      {
+        type: 2,
+        style: 1,
+        label: "重新辨識",
+        custom_id: `vf|retry|${cleanRunId}|${cleanRequester}`,
+      },
+      {
+        type: 2,
+        style: 2,
+        label: "描述畫面",
+        custom_id: `vf|describe|${cleanRunId}|${cleanRequester}`,
       },
     ],
   }];
@@ -98,6 +148,8 @@ export async function attachVisionFeedbackPanel(options = {}) {
 }
 
 export const __test = {
+  comparableContent,
   discordPromptMetadata,
+  resolveDiscordResponseMessageId,
   visionFeedbackComponents,
 };

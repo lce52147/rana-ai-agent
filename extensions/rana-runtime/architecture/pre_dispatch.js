@@ -14,6 +14,8 @@ import { sanitizeRanaTone } from "../output_guard.js";
 import { postJson } from "../sidecars/http.js";
 
 const OWNER_IDS = new Set(["376320922484867073", "1197194412929843231"]);
+const OWNER_MENTION_RE = /(?:<@!?376320922484867073>|@很COG)/gu;
+const OWNER_IDENTITY_QUESTION_RE = /咳咳咳咳咳（主人）\s*(?:是誰|是誰啊|是什麼人)[？?]?\s*$/u;
 const HOT_TOOLS_URL = "http://127.0.0.1:8091";
 const MODEL_HEALTH_URL = process.env.RANA_MODEL_HEALTH_URL || "http://127.0.0.1:6969/v1/models";
 const MODEL_HEALTH_TIMEOUT_MS = 1200;
@@ -23,6 +25,14 @@ let modelHealthCache = { checkedAt: 0, online: false };
 
 function compactText(value) {
   return firstText(value).replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+export function normalizeKnownDiscordMentions(value) {
+  return firstText(value).replace(OWNER_MENTION_RE, "咳咳咳咳咳（主人）");
+}
+
+export function knownOwnerIdentityReply(value) {
+  return OWNER_IDENTITY_QUESTION_RE.test(firstText(value)) ? "咳咳咳咳咳。主人。" : null;
 }
 
 function routeLog(kind, text, extra = "") {
@@ -124,7 +134,7 @@ export function registerPreDispatch(api, handlers = {}) {
   api.on("before_dispatch", async (event, ctx) => {
     let routeText = firstText(event?.body) || firstText(event?.content);
     if (isTargetedEvent(event, ctx, routeText)) {
-      const normalizedRouteText = normalizeRouteText(routeText);
+      const normalizedRouteText = normalizeRouteText(normalizeKnownDiscordMentions(routeText));
       if (normalizedRouteText !== routeText) {
         if (typeof event?.body === "string") event.body = normalizedRouteText;
         if (typeof event?.content === "string") event.content = normalizedRouteText;
@@ -134,6 +144,9 @@ export function registerPreDispatch(api, handlers = {}) {
 
     if (!isTargetedEvent(event, ctx, routeText)) return;
     rememberDiscordContext(event, ctx);
+
+    const ownerIdentity = knownOwnerIdentityReply(routeText);
+    if (ownerIdentity) return { handled: true, text: ownerIdentity };
 
     const control = parseControlRequest(event);
     if (control) return await handleControlRequest?.(control, event, ctx, routeText);
@@ -194,6 +207,8 @@ export const __test = {
   hotFallback,
   isDirectMessageEvent,
   isModelOnline,
+  knownOwnerIdentityReply,
+  normalizeKnownDiscordMentions,
   isOwnerEvent,
   isTargetedEvent,
   registerOfflineModelSelection,

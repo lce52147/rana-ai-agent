@@ -39,12 +39,40 @@ test("Vision feedback panel is scoped to the Discord requester", () => {
   assert.equal(components[0].components.length, 2);
   assert.match(components[0].components[0].custom_id, /^vf\|ok\|/u);
   assert.match(components[0].components[1].custom_id, /^vf\|wrong\|/u);
+  assert.equal(components[1].components.length, 2);
+  assert.match(components[1].components[0].custom_id, /^vf\|retry\|/u);
+  assert.match(components[1].components[1].custom_id, /^vf\|describe\|/u);
+});
+
+test("Vision feedback resolves the Discord snowflake omitted by message_sent", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.endsWith("/users/@me")) {
+      return { ok: true, json: async () => ({ id: "1202969643162013776" }) };
+    }
+    return {
+      ok: true,
+      json: async () => [
+        { id: "1527300000000000001", author: { id: "1202969643162013776" }, content: "認識。燈是 MyGO!!!!! 的團員。" },
+      ],
+    };
+  };
+  const messageId = await feedbackTest.resolveDiscordResponseMessageId({
+    channelId: "1495319712370917396",
+    content: "認識。燈是 MyGO!!!!! 的團員。",
+    token: "test-token",
+    fetchImpl,
+  });
+  assert.equal(messageId, "1527300000000000001");
+  assert.equal(calls.length, 2);
 });
 
 test("ToriiGate prompt sends exactly one image and requests raw observation", () => {
   const content = clientTest.visionUserContent(Buffer.from("image"), "image/png");
   assert.equal(content.filter((item) => item.type === "image_url").length, 1);
   assert.match(content[0].text, /without guessing a character name/i);
+  assert.match(content[0].text, /Traditional Chinese/i);
 });
 
 test("ToriiGate parser preserves a string feature as evidence", () => {
@@ -119,6 +147,7 @@ test("reply image placeholder resolves the referenced Discord attachment once", 
     requestId: "reply-test",
   });
   assert.ok(built);
+  assert.equal(built.sourceMessageId, "1526495598151467108");
   assert.equal(replyLoads, 1);
   assert.equal(evidenceBuilds, 1);
 });
@@ -738,4 +767,28 @@ test("Vision delivery tracing keeps the sending entry until message_sent", () =>
   assert.equal(tracker.size(200), 1);
   assert.equal(tracker.take({ channelId: "channel-1" }, 300).requestId, "trace-1");
   assert.equal(tracker.size(300), 0);
+});
+
+test("Vision delivery matches Discord outbound context by conversation id", () => {
+  const tracker = guidanceTest.createDeliveryTracker(1000);
+  tracker.enqueue({
+    requestId: "trace-1",
+    runId: "run-1",
+    channelId: "1495319712370917396",
+    conversationId: "1495319712370917396",
+  }, 100);
+  const outbound = tracker.take({
+    channelId: "discord",
+    conversationId: "1495319712370917396",
+  }, 200);
+  assert.equal(outbound.requestId, "trace-1");
+  assert.equal(tracker.size(200), 0);
+});
+
+test("Vision agent-end feedback uses the final assistant text", () => {
+  const content = guidanceTest.lastAssistantText([
+    { role: "user", content: "這是誰？" },
+    { role: "assistant", content: [{ type: "text", text: "是愛音。" }] },
+  ]);
+  assert.equal(content, "是愛音。");
 });

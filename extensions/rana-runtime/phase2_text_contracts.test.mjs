@@ -25,6 +25,22 @@ test("casual text and requests with missing parameters remain model-first", () =
   assert.equal(parseControlRequest({ body: "@Rana 接下來想聊下一首歌的編曲" }), null);
 });
 
+test("Discord owner mentions normalize before the model sees them", () => {
+  assert.equal(
+    preDispatchTest.normalizeKnownDiscordMentions("@Rana @很COG 是誰？"),
+    "@Rana 咳咳咳咳咳（主人） 是誰？",
+  );
+  assert.equal(
+    preDispatchTest.normalizeKnownDiscordMentions("<@376320922484867073>"),
+    "咳咳咳咳咳（主人）",
+  );
+  assert.equal(
+    preDispatchTest.knownOwnerIdentityReply("@Rana 咳咳咳咳咳（主人） 是誰？"),
+    "咳咳咳咳咳。主人。",
+  );
+  assert.equal(preDispatchTest.knownOwnerIdentityReply("@Rana 咳咳咳咳咳（主人） 今天好嗎？"), null);
+});
+
 test("explicit actions with sufficient parameters select the intended tool", () => {
   assert.equal(expectedToolForText("@Rana 播放春日影"), "rana_play_music");
   assert.equal(expectedToolForText("@Rana 幫我記住明天帶傘"), "rana_memory");
@@ -55,6 +71,13 @@ test("model guidance preserves event actor direction without hard-coded characte
   assert.match(guidance, /只有使用者問生日時才能使用生日索引/u);
   assert.match(guidance, /不能補 Core Files 沒有寫的樂團或職位/u);
   assert.doesNotMatch(guidance, /祐天寺|にゃむ/u);
+});
+
+test("owner mention guidance answers only the mentioned owner", () => {
+  const guidance = buildModelToolGuidance("@Rana 咳咳咳咳咳（主人） 是誰？");
+  assert.match(guidance, /只回答被問的人/u);
+  assert.match(guidance, /不要先介紹自己/u);
+  assert.match(guidance, /這個人是主人/u);
 });
 
 test("explicit durable memory requests execute directly even while the model is online", async () => {

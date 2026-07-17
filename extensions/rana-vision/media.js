@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { analyzeWithToriiGate, loadRepliedDiscordMedia } from "./client.js";
 import { createVisionRequestId, traceVision } from "./debug.js";
+import { buildVisionEvidence } from "./evidence.js";
 
 const execFileAsync = promisify(execFile);
 const OPENCLAW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -13,7 +14,7 @@ const MEDIA_SERVICE = path.resolve(OPENCLAW_ROOT, "workspace", "services", "rana
 const MEDIA_PYTHON = path.resolve(MEDIA_SERVICE, ".venv", "Scripts", "python.exe");
 const MEDIA_SCRIPT = path.resolve(MEDIA_SERVICE, "analyze_media.py");
 const MEDIA_OUTPUT = path.resolve(process.env.RANA_MEDIA_OUTPUT_DIR || "C:\\tmp\\rana-media-analysis");
-const SUPPORTED_RE = /\.(?:mp4|webm|mov|mkv|avi|m4v|mp3|wav|ogg|opus|m4a|flac|aac|pdf|txt|log|md|csv|json|ya?ml|xml)$/i;
+const SUPPORTED_RE = /\.(?:mp4|webm|mov|mkv|avi|m4v|pdf|txt|log|md|csv|json|ya?ml|xml)$/i;
 
 function firstText(value) {
   return typeof value === "string" ? value : "";
@@ -25,8 +26,14 @@ function cleanFilename(value) {
 
 function directMediaAttachment(prompt) {
   const text = firstText(prompt);
-  const matches = [...text.matchAll(/\[media attached:\s*([^\]\n]+?\.(?:mp4|webm|mov|mkv|avi|m4v|mp3|wav|ogg|opus|m4a|flac|aac|pdf|txt|log|md|csv|json|ya?ml|xml))(?:\s+\([^)]+\))?\s*\]/gi)];
+  const matches = [...text.matchAll(/\[media attached:\s*([^\]\n]+?\.(?:mp4|webm|mov|mkv|avi|m4v|pdf|txt|log|md|csv|json|ya?ml|xml))(?:\s+\([^)]+\))?\s*\]/gi)];
   return matches.at(-1)?.[1]?.trim() || "";
+}
+
+function hasAudioAttachment(prompt) {
+  const text = firstText(prompt);
+  return /<media:audio>/i.test(text)
+    || /\[media attached:[^\]\n]+?\.(?:mp3|wav|ogg|opus|m4a|flac|aac)(?:\s|\(|\])/i.test(text);
 }
 
 function replyReference(prompt) {
@@ -85,7 +92,6 @@ async function runPreprocessor(sourcePath, requestId, options = {}) {
     "--max-frames",
     String(options.maxFrames || 18),
   ];
-  if (options.transcribe !== false) args.push("--transcribe");
   const result = await execFileAsync(MEDIA_PYTHON, args, {
     timeout: Number(options.timeoutMs || 8 * 60 * 1000),
     windowsHide: true,
@@ -117,8 +123,42 @@ async function analyzeVisuals(preprocessed, requestId, options = {}) {
   return observations;
 }
 
-function compactPayload(preprocessed, observations, requestId, question) {
-  const transcript = preprocessed.transcript || {};
+async function resolveMediaIdentity(preprocessed, question, requestId, options = {}) {
+  if (!options.resolveIdentity || preprocessed.kind !== "video") return null;
+  const imagePath = (preprocessed.frames || [])[0] || (preprocessed.grids || [])[0];
+  if (!imagePath) return null;
+  const image = await readFile(imagePath);
+  const evidence = await (options.buildEvidence || buildVisionEvidence)(
+    async () => ({
+      image,
+      mimeType: "image/jpeg",
+      source: "media_keyframe",
+      media: { filename: path.basename(imagePath) },
+    }),
+    question,
+    options.signal,
+    `${requestId}-identity`,
+  );
+  const primary = evidence?.identity_resolution?.primaryCharacter || null;
+  const impression = evidence?.identity_resolution?.primaryImpression || null;
+  return {
+    primaryCharacter: primary ? {
+      canonicalId: primary.canonicalId,
+      canonicalName: primary.canonicalName,
+      confidence: primary.confidence,
+      confidenceScore: primary.confidenceScore,
+      evidence: primary.evidence,
+    } : null,
+    impression: impression ? {
+      recognitionLevel: impression.recognitionLevel,
+      memoryAnchors: impression.memoryAnchors,
+      ranaCallsThem: impression.ranaCallsThem,
+      tentative: impression.tentative,
+    } : null,
+  };
+}
+
+function compactPayload(preprocessed, observations, requestId, question, identity = null) {
   return {
     schema: "rana.media.understanding.v1",
     requestId,
@@ -128,20 +168,14 @@ function compactPayload(preprocessed, observations, requestId, question) {
     pages: preprocessed.pages || null,
     manifest: String(preprocessed.manifest || "").slice(0, 12000),
     text: String(preprocessed.text || "").slice(0, 30000),
-    transcript: {
-      status: transcript.status || "unavailable",
-      language: transcript.language || null,
-      text: String(transcript.text || "").slice(0, 30000),
-      segments: Array.isArray(transcript.segments) ? transcript.segments.slice(0, 200) : [],
-      error: transcript.error || null,
-    },
     visualObservations: observations,
+    characterIdentity: identity,
     probe: preprocessed.probe || {},
     responseContract: {
       answerQuestionFirst: true,
       describeOnlyObservedContent: true,
-      distinguishTranscriptFromVisibleAction: true,
-      doNotInventMissingAudioOrFrames: true,
+      doNotInventMissingFrames: true,
+      doNotClaimAudioUnderstanding: true,
       avoidInternalPipelineTerms: true,
     },
   };
@@ -150,21 +184,52 @@ function compactPayload(preprocessed, observations, requestId, question) {
 function mediaContext(payload) {
   return [
     "以下是附件解析結果。先直接回答使用者的問題，再補充必要內容。",
-    "影片畫面只能依 visualObservations 回答；語音或字幕只能依 transcript 回答。兩者不得互相補寫。",
-    "如果資料不足、解析失敗或看不清楚，明確說不知道或看不清楚，不要猜人物、事件、台詞或聲音。",
+    "影片只能依 visualObservations 回答畫面內容。這條路徑沒有音訊理解，不得描述聲音、語音或台詞。",
+    "如果資料不足、解析失敗或看不清楚，明確說不知道或看不清楚，不要猜人物、事件或缺少的畫面。",
     "PDF、文字與 log 的內容在 text 欄位。不要向使用者提及 preprocessing、CRV、schema 或內部檔案路徑。",
     JSON.stringify(payload),
   ].join("\n");
 }
 
+function unsupportedAudioContext(prompt, requestId) {
+  const payload = {
+    schema: "rana.media.understanding.v1",
+    requestId,
+    kind: "audio",
+    status: "unsupported",
+    userQuestion: userQuestion(prompt),
+    responseContract: {
+      answerQuestionFirst: true,
+      stateAudioUnderstandingUnavailable: true,
+      doNotGuessAudioContent: true,
+      avoidInternalPipelineTerms: true,
+    },
+  };
+  return {
+    kind: "media",
+    requestId,
+    payload,
+    context: [
+      "這個附件是音訊。目前沒有音訊理解模型，不能聽取、轉錄或判斷內容。",
+      "直接簡短說目前不能聽這個音訊。不要猜語音、歌曲、人物、事件或環境聲。",
+      JSON.stringify(payload),
+    ].join("\n"),
+  };
+}
+
 export async function buildMediaEvidenceContext(prompt, options = {}) {
+  if (hasAudioAttachment(prompt)) {
+    return unsupportedAudioContext(prompt, options.requestId || createVisionRequestId());
+  }
   if (!directMediaAttachment(prompt) && !replyReference(prompt)) return null;
   const requestId = options.requestId || createVisionRequestId();
   const materialized = await materializeRequest(prompt, requestId, options);
   if (!materialized) return null;
   const preprocessed = await (options.preprocess || runPreprocessor)(materialized.path, requestId, options);
   const observations = await analyzeVisuals(preprocessed, requestId, options);
-  const payload = compactPayload(preprocessed, observations, requestId, userQuestion(prompt));
+  const question = userQuestion(prompt);
+  const identity = await resolveMediaIdentity(preprocessed, question, requestId, options);
+  const payload = compactPayload(preprocessed, observations, requestId, question, identity);
   await (options.trace || traceVision)(requestId, "final_media_payload", payload, { force: true });
   return {
     kind: "media",
@@ -177,7 +242,10 @@ export async function buildMediaEvidenceContext(prompt, options = {}) {
 export const __test = {
   compactPayload,
   directMediaAttachment,
+  hasAudioAttachment,
   mediaContext,
   replyReference,
+  resolveMediaIdentity,
+  unsupportedAudioContext,
   userQuestion,
 };

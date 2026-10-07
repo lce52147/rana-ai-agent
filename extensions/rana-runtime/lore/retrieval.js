@@ -179,13 +179,6 @@ function descriptorResolution(query, explicitEntities, state = loadState()) {
   return [{ ...publicEntity(entity, best.matches.map((item) => item.alias).join("+"), "structured_descriptor"), descriptor_matches: best.matches }];
 }
 
-function isKnownPeopleInventoryQuery(query, resolved = []) {
-  const text = String(query || "").replace(/<@!?\d+>|@Rana/giu, " ").replace(/\s+/gu, "");
-  if (resolved.some((entity) => entity.canonical_id !== "rana")) return false;
-  return /(?:你|妳|樂奈|Rana)?(?:目前|現在)?(?:都|確定|真的)?(?:認識|記得|熟悉)(?:的)?(?:有)?(?:誰|哪些人|哪幾個人|所有人|什麼人)/iu.test(text)
-    || /(?:說說|講講|告訴我)?(?:你|妳|樂奈|Rana).{0,8}(?:認識|記得|熟悉)(?:的)?人/u.test(text);
-}
-
 function isUnknownPeopleInventoryQuery(query) {
   const text = String(query || "").replace(/<@!?\d+>|@Rana/giu, " ").replace(/\s+/gu, "");
   return /(?:你|妳|樂奈|Rana)(?:到底|目前)?(?:都)?(?:不|沒|沒有)(?:認識|記得|熟悉)(?:的)?(?:有)?(?:誰|哪些人|哪幾個人|什麼人)/iu.test(text)
@@ -322,6 +315,11 @@ function buildQueryPlan(query, resolved, unifiedTurnPlan = null) {
   let polarity = /(?:沒|沒有|未曾)/u.test(String(query || "")) ? "negative" : "positive";
   let temporal_scope = /(?:現在|目前|如今|還)/u.test(String(query || "")) ? "current" : /(?:以前|過去|曾經|小時候)/u.test(String(query || "")) ? "past" : "unspecified";
   const knownPeopleInventoryContinuation = String(unifiedTurnPlan?.utteranceAct?.continuationMode || "") === "known_people_inventory_followup";
+  const knownPeopleInventoryFirstRound = !knownPeopleInventoryContinuation
+    && unifiedTurnPlan?.subject?.type === "active_persona"
+    && unifiedTurnPlan?.predicate === "relationship"
+    && unifiedTurnPlan?.evidence?.source === "persona_canonical"
+    && (unifiedTurnPlan?.evidence?.predicateAnchors || []).some((item) => /(?:認識|认识)/u.test(String(item || "")));
 
   if (explicitPair) {
     intent = "explicit_relationship_pair";
@@ -347,7 +345,7 @@ function buildQueryPlan(query, resolved, unifiedTurnPlan = null) {
     object = { type: "speaker", entity_ids: [RANA_ENTITY_ID] };
     scope = "explicit_pairwise_relationship";
     predicate = "recognizes";
-  } else if (knownPeopleInventoryContinuation || isKnownPeopleInventoryQuery(query, resolved)) {
+  } else if (knownPeopleInventoryContinuation || knownPeopleInventoryFirstRound) {
     intent = "known_people_inventory";
     object = { type: "relationship_target_set", entity_ids: [] };
     scope = knownPeopleInventoryContinuation ? "remembered_people_followup" : "core_people_first_round";
@@ -1473,7 +1471,6 @@ export function resolveIndexCompatibility(index, corpus, status) {
 export const __test = {
   buildQueryPlan,
   descriptorResolution,
-  isKnownPeopleInventoryQuery,
   isUnknownPeopleInventoryQuery,
   isAssistantSelfIdentityQuestion,
   isRanaRelationshipQuestion,

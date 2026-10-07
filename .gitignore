@@ -1,0 +1,68 @@
+# Allowlist .gitignore. Everything is ignored unless it is listed in the allow section below.
+# To track a new top-level file or directory, add "!/name" or "!/name/" to the allow section.
+/*
+!/.gitignore
+!/extensions/
+!/workspace/
+!/scripts/
+!/EXTERNAL_BINARIES.md
+!/application.yml
+!/gateway.cmd
+!/gateway_visible.cmd
+!/gateway_visible.ps1
+!/start LIVE.cmd
+!/START_OOGG.cmd
+
+# ---- never track, even inside allowed directories ----
+# credentials, device identity, per-device state
+openclaw.json
+openclaw.json.*
+identity/
+devices/
+**/auth-profiles*
+**/cookies*.txt
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+**/identity-sidecar.json
+**/.*-state.json
+# backups
+*.bak
+*.bak.*
+*.bk
+# environments, caches, archives, models, logs
+**/node_modules/
+**/.venv/
+**/venv/
+**/site-packages/
+**/__pycache__/
+*.zip
+*.gguf
+*.log
+*.tap
+# runtime data inside workspace (received media, agent memory, regenerable RAG output)
+/workspace/media/
+/workspace/memory/
+/workspace/LORE/generated/
+/workspace/tools.disabled/
+# large binaries are documented in EXTERNAL_BINARIES.md instead of being tracked
+*.jar
+*.dll
+*.exe
+*.pyd
+*.so
+*.7z
+*.whl
+/workspace/tools/ffmpeg/
+# old backups and archived notes are not part of the project
+**/backup/
+**/backups/
+**/archive_notes/
+# personal data about real people (group members) must never be published
+/workspace/MEMORY.md
+**/MEMORY.md
+/workspace/CODEX_RANA_OPENCLAW_HANDOFF_v1.md
+/workspace/Rana_Personal_Runtime_Contract_Codex_Baseline.md
+/workspace/tests/v5_smoke_prompts.txt

@@ -1,0 +1,11 @@
+{
+  "name": "rana-web-search-guard",
+  "version": "1.0.1",
+  "type": "module",
+  "main": "index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

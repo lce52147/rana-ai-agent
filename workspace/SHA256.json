@@ -1,0 +1,7 @@
+{
+  "CODEX_DEPLOY.md": "1a6fae2c0a3b6bd3824900ed0cc06b487e753ffc511bcb940d033d8f1cd84e40",
+  "README.md": "b6b08b04b1b51ab7e789be022b2aba1bed84fc565e3f0c6cf6e826b76e31fc0b",
+  "extensions/rana-runtime/index.js": "1b34290a87804a880d816b67a9ce12326e4d911f9656cc885870eef845a2562e",
+  "extensions/rana-runtime/preference_guard.js": "377f3c494059de88f7277a7700eb7d28bfda0626379db54fa517db3a535267d1",
+  "extensions/rana-runtime/preference_guard.test.mjs": "9cfe606507e34359a2379e3c308fb6dfd86bd041a17bd6de3ddd696e6af79063"
+}

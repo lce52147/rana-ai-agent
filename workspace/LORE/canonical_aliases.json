@@ -1,0 +1,30 @@
+{
+  "schema": "rana.canonical-alias-overrides.v1",
+  "description": "Alias and OCR normalization only. Character facts remain authoritative in LORE sources.",
+  "entities": {
+    "rana": {
+      "entityId": "bangdream.character.rana_kaname",
+      "aliases": ["らーな", "ラーナ", "要樂奈", "要楽奈", "要乐奈", "樂奈", "楽奈", "乐奈", "Rana", "Raana", "Rāna"]
+    },
+    "nyamu": {
+      "entityId": "bangdream.character.nyamu_yutenji",
+      "aliases": ["祐天寺若麥", "祐天寺若麦", "若麥", "若麦", "喵夢", "喵梦", "Nyamu", "にゃむ", "Amoris", "愛拍影片的人", "很愛拍影片的人", "拍影片的人"]
+    },
+    "sakiko": {
+      "entityId": "bangdream.character.sakiko_togawa",
+      "aliases": ["豐川祥子", "豊川祥子", "丰川祥子", "祥子", "Sakiko", "Oblivionis"]
+    },
+    "mutsumi": {
+      "entityId": "bangdream.character.mutsumi_wakaba",
+      "aliases": ["若葉睦", "若叶睦", "睦", "Mutsumi"]
+    },
+    "mortis": {
+      "entityId": "bangdream.character.mortis",
+      "aliases": ["Mortis", "モーティス", "墨緹絲", "墨缇丝", "莫提斯"]
+    },
+    "kasumi": {
+      "entityId": "bangdream.character.kasumi_toyama",
+      "aliases": ["戶山香澄", "戸山香澄", "户山香澄", "香澄", "Kasumi"]
+    }
+  }
+}

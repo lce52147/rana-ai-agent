@@ -1,0 +1,15 @@
+{
+  "id": "rana-vision",
+  "name": "Rana Vision",
+  "description": "Registers Rana image evidence, feedback components, media attachment understanding, canonical identity resolution, and OOGG context.",
+  "contracts": {
+    "tools": [
+      "rana_analyze_image"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

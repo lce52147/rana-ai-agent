@@ -1,0 +1,102 @@
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+
+const ROOT = __dirname;
+const CONFIG_PATH = path.resolve(ROOT, "..", "..", "..", "openclaw.json");
+const BRIDGE_SCRIPT = path.join(ROOT, "voice_bridge.js");
+const SPECS = [
+  { botId: "rana", accountId: "default", port: 8081 },
+  { botId: "tomori", accountId: "tomori", port: 8082 },
+  { botId: "anon", accountId: "anon", port: 8083 },
+  { botId: "soyo", accountId: "soyo", port: 8084 },
+  { botId: "taki", accountId: "taki", port: 8085 },
+];
+
+const children = new Map();
+
+function readConfig() {
+  return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8").replace(/^\uFEFF/u, ""));
+}
+
+function botUserId(token) {
+  const first = String(token || "").split(".")[0];
+  if (!first) return "";
+  try {
+    const normalized = first.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(first.length / 4) * 4, "=");
+    const decoded = Buffer.from(normalized, "base64").toString("utf8");
+    return /^\d{15,25}$/.test(decoded) ? decoded : "";
+  } catch {
+    return "";
+  }
+}
+
+async function healthy(port) {
+  try {
+    const response = await fetch("http://127.0.0.1:" + port + "/health", { signal: AbortSignal.timeout(1200) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function tokenFor(config, spec) {
+  if (spec.accountId === "default") return config.channels?.discord?.token || "";
+  return config.channels?.discord?.accounts?.[spec.accountId]?.token || "";
+}
+
+async function ensure(spec) {
+  if (await healthy(spec.port)) return;
+  const existing = children.get(spec.botId);
+  if (existing && !existing.killed && existing.exitCode == null) return;
+
+  const config = readConfig();
+  const token = tokenFor(config, spec);
+  if (!token) {
+    console.error("[mygo-voice] " + spec.botId + ": token unavailable; bridge not started");
+    return;
+  }
+  const userId = botUserId(token);
+  if (!userId) {
+    console.error("[mygo-voice] " + spec.botId + ": could not derive Discord user id; bridge not started");
+    return;
+  }
+
+  const child = spawn(process.execPath, [BRIDGE_SCRIPT], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      DISCORD_TOKEN: token,
+      BOT_USER_ID: userId,
+      BRIDGE_PORT: String(spec.port),
+      MYGO_BOT_ID: spec.botId,
+    },
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  children.set(spec.botId, child);
+  child.on("exit", (code, signal) => {
+    console.error("[mygo-voice] " + spec.botId + " bridge exited code=" + (code ?? "null") + " signal=" + (signal || "none"));
+    if (children.get(spec.botId) === child) children.delete(spec.botId);
+  });
+  console.log("[mygo-voice] ensured " + spec.botId + " bridge on " + spec.port);
+}
+
+async function reconcile() {
+  for (const spec of SPECS) {
+    try {
+      await ensure(spec);
+    } catch (error) {
+      console.error("[mygo-voice] " + spec.botId + " reconcile failed: " + (error?.message || String(error)));
+    }
+  }
+}
+
+async function main() {
+  await reconcile();
+  setInterval(() => { void reconcile(); }, 10000);
+}
+
+process.on("SIGINT", () => process.exit(0));
+process.on("SIGTERM", () => process.exit(0));
+void main();

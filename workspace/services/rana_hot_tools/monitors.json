@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": "1779508880338-5cd8543c750d58",
+      "target": "MyGO 票",
+      "url": null,
+      "createdAt": "2026-05-23T04:01:20.338Z",
+      "enabled": true
+    },
+    {
+      "id": "1779508948675-a271e134e58cd",
+      "target": "MyGO 票",
+      "url": null,
+      "createdAt": "2026-05-23T04:02:28.675Z",
+      "enabled": true
+    },
+    {
+      "id": "1779704704026-e864bea0aabbc8",
+      "target": "查股票 LLM",
+      "url": null,
+      "createdAt": "2026-05-25T10:25:04.026Z",
+      "enabled": true
+    }
+  ]
+}

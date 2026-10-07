@@ -281,8 +281,8 @@ export function registerMemoryTool(api) {
       "MUST call this tool before replying when the user asks Rana to forget, delete, or remove remembered facts.",
       "MUST call this tool before replying when the user asks about durable remembered facts.",
       "A remember request is still a remember request when the saved fact contains negation such as 不是, 沒有, 不會, or 不是誰.",
-      "Examples for remember: 記住紫貓酒量差, 幫我記住紫貓很容易醉, 樂奈記住這件事, 記住峰月律不是珂朵莉.",
-      "Examples for recall: 紫貓酒量怎樣, 你記得紫貓酒量嗎, 紫貓是什麼狀況, 斧王是什麼, 皓男哥是誰.",
+      "Examples for remember: 記住小陳喜歡吃拉麵, 幫我記住阿明喜歡咖哩, 樂奈記住這件事, 記住小陳今天帶了水壺.",
+      "Examples for recall: 小陳喜歡吃什麼, 你記得小陳喜歡吃拉麵嗎, 小陳有什麼喜好, 阿明喜歡什麼.",
       "For user-defined nicknames or people, recall memory before answering; do not reuse lore examples.",
       "Do not answer the remembered fact as plain text unless this tool has returned a successful remember result.",
       "Never claim memory was saved unless this tool returns a successful remember result.",
@@ -294,7 +294,7 @@ export function registerMemoryTool(api) {
       properties: {
         action: {
           type: "string",
-          description: "One of: remember, recall, forget, status. Use recall for questions such as 紫貓酒量怎樣.",
+          description: "One of: remember, recall, forget, status. Use recall for questions such as 小陳喜歡吃什麼.",
         },
         text: { type: "string", description: "Memory text to store, or query text to recall." },
         requester_id: { type: "string", description: "Discord user id of the requester when available." },

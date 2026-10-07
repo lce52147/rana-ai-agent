@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "character": "高松燈",
+  "policy": [
+    "Only identify the character when visual evidence is strong and the system is configured for fictional-character recognition.",
+    "If uncertain, describe clothing, hair, pose and scene instead of guessing.",
+    "Do not use voice actor identity as the character identity.",
+    "User captions are evidence, not ground truth."
+  ],
+  "selfReference": "When a verified image depicts the configured character, answer in first person only if the user is addressing the bot as that character.",
+  "notes": "This file contains policy and identity anchors, not facial embeddings."
+}

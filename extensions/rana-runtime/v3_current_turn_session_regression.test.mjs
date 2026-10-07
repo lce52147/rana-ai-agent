@@ -10,6 +10,7 @@ import * as contextStore from "./context_store.js";
 import * as contracts from "./tool_contracts.js";
 import * as preDispatch from "./architecture/pre_dispatch.js";
 import * as turnIsolation from "./architecture/turn_isolation.js";
+import { buildUnifiedTurnPlan } from "./architecture/turn_plan.js";
 import * as music from "../rana-music-tools/tools/music.js";
 
 let requesterSequence = 0;
@@ -253,6 +254,31 @@ test("V3 current turn: before_agent_reply carries previous user text into known-
     preDispatchSource,
     /const turnPlan = buildUnifiedTurnPlan\(routeText, \{[\s\S]*?previousUserText:\s*rememberedContext\?\.previousUserText\s*\|\|\s*""[\s\S]*?\}\);/u,
   );
+});
+
+test("V3 known-people paraphrases share inventory planning and follow-up semantics", () => {
+  const firstTurns = [
+    "你都認識哪些人",
+    "你認識哪些人",
+    "你認識的人有誰",
+    "你都認識誰",
+  ];
+  for (const text of firstTurns) {
+    const plan = buildUnifiedTurnPlan(text, { personaId: "rana" });
+    assert.equal(plan.utteranceAct?.subtype, "CANONICAL_EVIDENCE_QUERY", text);
+    assert.equal(plan.utteranceAct?.target, "ACTIVE_CHARACTER_IDENTITY", text);
+    assert.equal(plan.utteranceAct?.activity, "relationship", text);
+    assert.ok(plan.utteranceAct?.predicateAnchors?.some((item) => /認識|认识/u.test(item)), text);
+    assert.equal(plan.evidence?.source, "persona_canonical", text);
+  }
+
+  const followUps = ["其他呢", "其他人呢", "還有呢", "還有其他人嗎", "還有別人嗎"];
+  for (const text of followUps) {
+    const plan = buildUnifiedTurnPlan(text, { personaId: "rana", previousUserText: "你認識誰" });
+    assert.equal(plan.utteranceAct?.continuationMode, "known_people_inventory_followup", text);
+    assert.equal(plan.utteranceAct?.target, "ACTIVE_CHARACTER_IDENTITY", text);
+    assert.equal(plan.evidence?.source, "persona_canonical", text);
+  }
 });
 
 test("V3 current turn: event identity and current-turn Music hint take precedence over ctx", () => {

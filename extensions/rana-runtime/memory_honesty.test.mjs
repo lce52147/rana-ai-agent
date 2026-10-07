@@ -24,14 +24,14 @@ test("saved user facts are recalled from Rana's second-person viewpoint", () => 
 
 test("failed remember evidence blocks remembered-success wording", () => {
   const hint = { agentId: "main", accountId: "default", sessionKey: "memory-failure-test", requester_id: "1197194412929843231" };
-  rememberDiscordContext({ agentId: "main", accountId: "default", sessionKey: hint.sessionKey, senderId: hint.requester_id, body: "@Rana 記住紫貓酒量差" }, {});
+  rememberDiscordContext({ agentId: "main", accountId: "default", sessionKey: hint.sessionKey, senderId: hint.requester_id, body: "@Rana 記住小陳喜歡吃拉麵" }, {});
   rememberToolEvidence("rana_memory", "remember", false, hint);
   assert.deepEqual(guardOutgoingMessage("嗯。記住了。", hint), { content: "沒有真的記住。" });
 });
 
 test("explicit memory success still allows the normal Rana reply", () => {
   const hint = { agentId: "main", accountId: "default", sessionKey: "memory-success-test", requester_id: "1197194412929843231" };
-  rememberDiscordContext({ agentId: "main", accountId: "default", sessionKey: hint.sessionKey, senderId: hint.requester_id, body: "@Rana 記住皓男哥是帥哥" }, {});
+  rememberDiscordContext({ agentId: "main", accountId: "default", sessionKey: hint.sessionKey, senderId: hint.requester_id, body: "@Rana 記住阿明喜歡咖哩" }, {});
   rememberToolEvidence("rana_memory", "remember", true, hint);
   assert.equal(guardOutgoingMessage("嗯。記住了。", hint), undefined);
 });

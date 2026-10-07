@@ -5,6 +5,7 @@ import {
   isProtectedBareNoun,
   parseMusicCommand,
 } from "../../rana-runtime/tool_contracts.js";
+import { buildUnifiedTurnPlan } from "../../rana-runtime/architecture/turn_plan.js";
 import {
   recentContextSnapshot,
   recentDiscordText,
@@ -89,6 +90,7 @@ function routeFromParams(params = {}, trusted = null) {
 
 function currentTurnMusicHint(event, ctx) {
   const context = resolveBotContext(event, ctx);
+  if (!context) return { agentId: "", sessionKey: "" };
   return {
     agentId: context.agentId,
     sessionKey: context.sessionKey,
@@ -362,7 +364,8 @@ export function registerMusicTools(api) {
     const hint = currentTurnMusicHint(event, ctx);
     if (!hint.agentId || !hint.sessionKey) return musicIntentBlock(toolName);
     const sourceText = firstText(ctx?.currentTurnText).trim() || recentDiscordText(hint);
-    if (!sourceText || !isCurrentTurnToolAuthorized({ toolName, text: sourceText })) {
+    const plan = sourceText ? buildUnifiedTurnPlan(sourceText) : null;
+    if (!sourceText || !isCurrentTurnToolAuthorized({ toolName, plan })) {
       return musicIntentBlock(toolName);
     }
   }, { priority: 6000, timeoutMs: 5000 });
@@ -399,7 +402,8 @@ export function registerMusicTools(api) {
       }
       const sourceText = recentDiscordText(trustedHint);
       if (!sourceText) return trustedToolError("rana_play_music", { error: "missing trusted current source text" });
-      if (isPlainKeyword(target) && !isCurrentTurnToolAuthorized({ toolName: "rana_play_music", text: sourceText })) {
+      const plan = buildUnifiedTurnPlan(sourceText);
+      if (isPlainKeyword(target) && !isCurrentTurnToolAuthorized({ toolName: "rana_play_music", plan })) {
         return { content: [{ type: "text", text: JSON.stringify({ status: "error", llm_hint: "沒有明確播放指令。" }) }] };
       }
       const route = routeFromParams(params, trusted);

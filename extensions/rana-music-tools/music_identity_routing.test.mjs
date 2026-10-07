@@ -16,7 +16,15 @@ for (const [botId, baseUrl] of Object.entries(expected)) {
   assert.equal(route.baseUrl, baseUrl);
   assert.equal(route.identityError, null);
 
-const eventRoute = __test.routeFromEvent({ botId, sessionKey: `event-${botId}` }, {});
+  const agentId = botId === "rana" ? "main" : botId;
+  const accountId = botId === "rana" ? "default" : botId;
+  const eventRoute = __test.routeFromEvent({
+    agentId,
+    accountId,
+    botId,
+    personaId: botId,
+    sessionKey: `event-${botId}`,
+  }, {});
   assert.equal(eventRoute.botId, botId);
   assert.equal(eventRoute.baseUrl, baseUrl);
 }

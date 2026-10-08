@@ -810,6 +810,96 @@ const PREDICATE_AWARE_SOURCE_ASPECTS = new Set([
 ]);
 
 function turnPlanRelevantStructuredFacts(turnPlan, resolved = [], state = loadState()) {
+  // An event relation chosen by the canonical TurnPlan is a typed predicate,
+  // independent of the user's surface wording. Search only reviewed structured
+  // facts; never use a hard-coded question -> response mapping.
+  const relation = String(turnPlan?.utteranceAct?.requestedRelation || "");
+  // Same entity focus selected once by the planner; this additive evidence
+  // applies even when the act remains USER_STATEMENT, USER_TASK or opinion.
+  const focus = turnPlan?.evidence?.reviewedEntityFocus
+    || turnPlan?.utteranceAct?.reviewedEntityFocus;
+  if (focus && (focus.mortis || focus.mutsumi || focus.spaceSite)) {
+    const all = state.store?.facts || [];
+    const requestedIds = new Set(resolved.map((item) => item.entity_id).filter(Boolean));
+    const anchors = [
+      ...(turnPlan?.evidence?.anchors || []),
+      ...(focus.anchors || []),
+    ].map((value) => normalize(value)).filter(Boolean);
+    for (const entity of state.entities?.entities || []) {
+      const names = [entity.canonicalName, ...(entity.aliases || [])].map(normalize);
+      if (anchors.some((candidate) => names.includes(candidate))) requestedIds.add(entity.entityId);
+    }
+    const identityFacts = (focus.mortis || focus.mutsumi)
+      ? all.filter((fact) => fact.predicate === "identity_link"
+        && (requestedIds.has(fact.subject) || requestedIds.has(fact.object)))
+      : [];
+    // A canonical identity comparison is scoped to identity links only.
+    // Additive G2 facts for ordinary entity mentions remain unchanged.
+    if (turnPlan?.evidence?.source === "persona_canonical"
+        && (relation === "identity_link" || turnPlan?.evidence?.requestedAspect === "identity_relation")) {
+      return identityFacts;
+    }
+    const linkedIds = new Set(requestedIds);
+    for (const fact of identityFacts) { linkedIds.add(fact.subject); linkedIds.add(fact.object); }
+    const linkedPairs = (focus.mortis || focus.mutsumi)
+      ? linkedIdentityTargets([...requestedIds], all)
+      : [];
+    const fingerFacts = (focus.mortis || focus.mutsumi)
+      ? all.filter((fact) => fact.predicate === "observed"
+        && /(?:finger|指尖|手指)/iu.test(String(fact.qualifiers?.attribute || "") + " " + (fact.topics || []).join(" "))
+        && (linkedIds.has(fact.subject) || linkedIds.has(fact.object)))
+      : [];
+    const projectedFingerFacts = linkedPairs.flatMap((pair) => fingerFacts
+      .filter((fact) => fact.subject === pair.linked || fact.object === pair.linked)
+      .map((fact) => linkedIdentityEventProjection(pair.target, pair.linked, fact)));
+    const directionFacts = (focus.mortis || focus.spaceSite)
+      ? all.filter((fact) => fact.predicate === "followed_to"
+        && fact.object === RANA_ENTITY_ID
+        && /SPACE/iu.test(String(fact.qualifiers?.place || ""))
+        && (focus.spaceSite || linkedIds.has(fact.subject)))
+      : [];
+    return [...new Map([...identityFacts, ...directionFacts,
+      ...fingerFacts, ...projectedFingerFacts].map((fact) =>
+        [fact.id || JSON.stringify(fact), fact])).values()];
+  }
+
+  if (turnPlan?.evidence?.source === "persona_canonical" && ["followed_to", "fingertips", "identity_link"].includes(relation)) {
+    const all = state.store?.facts || [];
+    const requestedIds = new Set(resolved.map((item) => item.entity_id).filter(Boolean));
+    const anchors = (turnPlan.evidence.anchors || []).map((value) => normalize(value)).filter(Boolean);
+    for (const entity of state.entities?.entities || []) {
+      const names = [entity.canonicalName, ...(entity.aliases || [])].map(normalize);
+      if (anchors.some((anchor) => names.includes(anchor))) requestedIds.add(entity.entityId);
+    }
+    if (relation === "identity_link") {
+      return all.filter((fact) => fact.predicate === "identity_link"
+        && requestedIds.has(fact.subject) && requestedIds.has(fact.object));
+    }
+    if (relation === "followed_to") {
+      const placeAnchors = anchors.filter((anchor) => /(?:space|ring|舊址|旧址)/iu.test(anchor));
+      return all.filter((fact) => fact.predicate === "followed_to"
+        && (requestedIds.has(fact.subject) || !requestedIds.size)
+        && fact.object === RANA_ENTITY_ID
+        && (!placeAnchors.length || placeAnchors.some((place) =>
+          normalize(fact.qualifiers?.place || "").includes(place)
+          || place.includes(normalize(fact.qualifiers?.place || "")))));
+    }
+    const direct = all.filter((fact) => fact.predicate === "observed"
+      && /(?:finger|指尖|手指)/iu.test(String(fact.qualifiers?.attribute || "") + " " + (fact.topics || []).join(" ")));
+    const links = linkedIdentityTargets([...requestedIds], all);
+    const linkedOwners = links.filter((pair) =>
+      direct.some((fact) => fact.object === pair.linked || fact.subject === pair.linked));
+    return [
+      ...direct.filter((fact) =>
+        !requestedIds.size
+        || requestedIds.has(fact.subject) || requestedIds.has(fact.object)
+        || linkedOwners.some((pair) => fact.object === pair.linked)),
+      ...linkedOwners.map((pair) => pair.identityFact),
+      ...linkedOwners.flatMap((pair) => direct.filter((fact) =>
+        fact.subject === pair.linked || fact.object === pair.linked)
+        .map((fact) => linkedIdentityEventProjection(pair.target, pair.linked, fact))),
+    ];
+  }
   const aspect = String(turnPlan?.evidence?.requestedAspect || turnPlan?.predicate || "");
   if (!turnPlan?.evidence?.required
     || turnPlan?.evidence?.source !== "persona_canonical"
@@ -1136,9 +1226,18 @@ export async function buildLoreEvidencePack(query, options = {}) {
   const requestedAspect = String(unifiedTurnPlan?.evidence?.requestedAspect || unifiedTurnPlan?.predicate || "");
   const definitionScopedFacts = unifiedTurnPlan?.evidence?.source === "persona_canonical"
     && requestedAspect === "entity_definition";
+  const onlyMutsumi = unifiedTurnPlan?.evidence?.reviewedEntityFocus?.mutsumi
+    && !unifiedTurnPlan?.evidence?.reviewedEntityFocus?.mortis;
+  const onlyMortis = unifiedTurnPlan?.evidence?.reviewedEntityFocus?.mortis
+    && !unifiedTurnPlan?.evidence?.reviewedEntityFocus?.mutsumi;
   const facts = [...new Map([(definitionScopedFacts ? turnPlanFacts : [...selectedFacts, ...turnPlanFacts])]
     .flat()
-    .map((fact) => [fact.factId || JSON.stringify(fact), fact])).values()];
+    .map((fact) => [fact.factId || JSON.stringify(fact), fact])).values()]
+    // With only 睦 in focus, the inverse Mortis-owned identity record should
+    // not be presented as an event belonging to her.
+    .filter((fact) => !(onlyMutsumi && fact.predicate === "identity_link"
+      && fact.subject === "bangdream.character.mortis")
+      && !(onlyMortis && String(fact.factId || "").startsWith("mutsumi.")));
   const boundaries = selectBoundaries(plan, resolved, text, facts, state);
   const predicateAwareSourceRequired = unifiedTurnPlan?.evidence?.required
     && unifiedTurnPlan?.evidence?.source === "persona_canonical"

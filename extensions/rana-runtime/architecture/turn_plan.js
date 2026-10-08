@@ -327,6 +327,90 @@ const R8_USER_CAPABILITY_IMPRESSION_RE = /^(?:你|妳)(?:覺得|觉得|猜|認�
 const R8_BARE_PERFORMANCE_REQUEST_RE = /^(?:(?:你|妳)\s*)?(?:(?:可以|能|可不可以|能不能)\s*)?(?:唱|彈奏|弹奏|演奏|彈|弹)(?:一下|一段)?(?:嗎|吗|呢)?[？?]?$/u;
 const R8_SHORT_CONTINUATION_RE = /^(?:還有嗎|还有吗|還有呢|还有呢|還有沒有|还有没有|哪(?:一)?首(?:呢)?|哪(?:一)?個(?:呢)?|哪(?:一)?个(?:呢)?)[？?]?$/u;
 const R8_KNOWN_PEOPLE_CONTINUATION_RE = /^(?:(?:還有誰|还有谁|其他|其他人)(?:呢)?|(?:還有|还有)(?:呢)|(?:還有其他人|还有其他人|還有別人|还有别人)(?:嗎|吗)?)[？?]?$/u;
+// R15: semantic slots for the current speaker's people inventory.
+const R15_PERSON_REFERENT_RE = /(?:誰|谁|什麼人|什么人|哪幾(?:個|个|位)|哪几(?:个|位)|哪些(?:人|朋友)?|朋友|熟人|認識的人|认识的人|身邊的人|身边的人|來往的人|来往的人|知道的人|名字|幾(?:位|個|个)人)/u;
+const R15_ADD_MORE_RE = /(?:還有|还有|其他|另外|別(?:的|人)|别(?:的|人)|再|除了|除此|就這|就这|(?:就|只有)(?:她們|她们|他們|他们|這些|这些|這幾(?:個|个|位)|这几(?:个|位))|沒(?:了|有|別人)|没(?:了|有|别人)|多說|多说)/u;
+function r15PeopleInventoryQuestion(text) {
+  const value = r3ActText(text).trim();
+  if (!value || value.length > 130 || /^(?:他|她|他們|她們|他们|她们|你們|妳們|你们|妳们)/u.test(value)) return false;
+  if (/(?:向|從|从|由)誰.{0,24}(?:學|学|教|帶|带)|誰.{0,8}(?:教|幫|帮|帶|带)(?:你|妳)/u.test(value)) return false;
+  if (!R15_PERSON_REFERENT_RE.test(value)) return false;
+  // A generic plural selector (哪幾個) only means people when a
+  // relationship/recognition predicate supplies that missing noun.
+  if (/(?:哪幾(?:個|个|位)|哪几(?:个|位))/u.test(value)
+      && !/(?:身邊|身边|比較好|比较好|交友|認識|认识|來往|来往|往來|往来|熟悉|熟|朋友|人物|人)/u.test(value)) return false;
+  if (/^(?:你|妳)(?:是誰|叫什麼|是哪位|的名字)/u.test(value) || /^誰/u.test(value)) return false;
+  if (!/^(?:你|妳|樂奈|Rana|說說|说说|講講|讲讲|告訴|告诉|列出)/u.test(value)
+      && !/(?:跟|和|與)(?:你|妳).{0,25}(?:哪些人|哪幾(?:個|个|位)|哪几(?:个|位)|誰|谁|朋友|熟人|比較好|比较好)/u.test(value)
+      && !/(?:認識的人|认识的人|知道的人|身邊的人|身边的人|來往的人|熟人).{0,15}(?:有誰|有谁|哪些|誰|谁)/u.test(value)) return false;
+  if (!isQuestion(value) && !/(?:誰|谁|什麼人|什么人|哪些|哪幾(?:個|个|位)|哪几(?:个|位)|幾(?:位|個|个)人|有(?:哪些|什麼|什么)朋友)/u.test(value)
+      && !/^(?:說說|说说|講講|讲讲|告訴|告诉|列出)/u.test(value)) return false;
+  // If a specific named character is the subject, this is a pair question,
+  // not a list of everyone known to the active Persona.
+  const named = value.match(new RegExp(R12_NAME_SRC, "giu")) || [];
+  if (named.some((name) => !/^(?:要樂奈|樂奈)$/u.test(name))) return false;
+  if (/(?:的|那位).{1,12}是誰/u.test(value)
+      && !/(?:那些|這些|这些|哪些|幾位|几位)人|都是誰/u.test(value)) return false;
+  return true;
+}
+function r15PeopleInventoryContinuation(text) {
+  const value = r3ActText(text).replace(/[？?。！!\s]/gu, "").trim();
+  if (!value || value.length > 70) return false;
+  if (new RegExp(R12_NAME_SRC, "iu").test(value)) return false;
+  // A short elliptical addition is sufficient; for longer turns require
+  // explicit add-more intent and a person referent, not an unrelated topic.
+  if (value.length <= 12) {
+    return R15_ADD_MORE_RE.test(value)
+      && !/(?:是什麼|是什么|怎麼|怎么|為什麼|为什么|去哪|有何)/u.test(value);
+  }
+  return R15_ADD_MORE_RE.test(value) && (R15_PERSON_REFERENT_RE.test(value) || /別的人|别的人/u.test(value));
+}
+// One entity-focus source shared by planner and typed-fact retrieval.
+function r15ReviewedEntityFocus(text) {
+  const value = String(text || "");
+  const contextualFingers = /(?:她們|她们|兩人|两人).{0,35}(?:指尖|手指|指頭|指头)/u.test(value)
+    && /(?:誰|谁|哪個|哪个|硬)/u.test(value);
+  const mortis = /(?:\bMortis\b|モーティス)/iu.test(value) || contextualFingers;
+  const mutsumi = /(?:若葉睦|睦)/u.test(value) || contextualFingers;
+  const spaceSite = /(?:SPACE.{0,10}(?:舊址|旧址|原址|老店|以前|舊店|旧店)|(?:舊址|旧址|原址).{0,10}SPACE)/iu.test(value);
+  if (!mortis && !mutsumi && !spaceSite) return null;
+  const identityComparison = mortis && mutsumi
+    && /(?:同一|一樣|一样|相同|不同|差異|差异|區別|区别|稱呼|身分|身份|連在一起|聯繫|關係|狀態)/u.test(value)
+    && !/(?:指尖|手指|指頭|指头|繭|茧)/u.test(value);
+  return {type:"QUESTION", subtype:"CANONICAL_EVIDENCE_QUERY",
+    target:mortis?"Mortis":mutsumi?"睦":"SPACE",
+    activity:"canonical_fact",
+    anchors:[mutsumi?"睦":null,mortis?"Mortis":null,spaceSite?"SPACE":null].filter(Boolean),
+    predicateAnchors:[],requestedRelation:identityComparison?"identity_link":"reviewed_entity_facts",
+    reviewedEntityFocus:{mortis,mutsumi,spaceSite}};
+}
+const R14_VERBATIM_DIRECTIVE_RE = /(?:原樣|原封不動|逐字|照抄|照著抄|複製|复制|拷貝|拷贝|一字不差|不要改|不准改|別改|别改|不增刪|不增删|回傳|回传|只(?:要|能)?(?:回覆|回复|回答|輸出|输出)|重複|重复|復述|复述)(?:[^：:\n]{0,62})/iu;
+function r14VerbatimPayload(text) {
+  const value = String(text || "").trim();
+  if (/^(?:他|她|別人|别人|朋友|對方|对方|有人).{0,24}(?:叫我|要我|讓我|让我|要求我|對我說|对我说)/u.test(value)) return "";
+  const colon = value.match(/^([^\n：:]{2,100})[：:]\s*(\S[^\n]*)$/u);
+  if (colon && R14_VERBATIM_DIRECTIVE_RE.test(colon[1])) return colon[2].trim();
+  const quoted = value.match(/[「『“"]([^」』”"]{1,500})[」』”"]/u);
+  if (quoted && R14_VERBATIM_DIRECTIVE_RE.test(value.slice(0, quoted.index))) return quoted[1];
+  return "";
+}
+function r14CanonicalParaphraseQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length > 140) return null;
+  const actor = text.match(new RegExp(R12_NAME_SRC,"iu"))?.[0];
+  // Elliptical event questions about a MyGO member may omit a question mark.
+  // An ordinary mention without a relationship event remains a statement.
+  const mygoEventEllipsis = /^(?:高松燈|千早愛音|長崎爽世|椎名立希|要樂奈|燈|愛音|爽世|立希|樂奈)$/u.test(actor || "")
+    && /(?:你|妳|我|我們|我们|彼此).{0,20}(?:和|跟|與|之間|之间|相處|相处|經歷|经历|印象)/u.test(text)
+    && /(?:之間|之间|相處|相处|經歷|经历|印象|發生過|发生过|一起做過|一起做过|記得的事)/u.test(text)
+    && /(?:事|事情|經歷|经历|回憶|回忆|印象|片段)/u.test(text);
+  if (actor && /(?:你|妳|你們|妳們|我們|我们|彼此|一起|共同|相互|互相|兩人|两人|之間)/u.test(text)
+    && /(?:相處|相处|互動|互动|經歷|经历|做過|做过|過往|过往|回憶|回忆|印象|往事|記得|记得|一同|一起|合作|鬥嘴|斗嘴|交流|相識|相识)/u.test(text)
+    && (/(?:誰|什麼|什么|哪|怎麼|怎么|如何|有|曾|過|过|通常|平常|平時|平时)/u.test(text) || mygoEventEllipsis)) {
+    return {type:"QUESTION",subtype:"CANONICAL_EVIDENCE_QUERY",target:actor,activity:"relationship",anchors:[actor],predicateAnchors:[]};
+  }
+  return null;
+}
 const R8_NAMED_CONTINUATION_RE = /^(?:那\s*)?([^，,。！？!?\n]{1,24}?)\s*呢[？?]?$/u;
 const R8_EVIDENCE_SCOPE_FOLLOWUP_RE = /^(?:為什麼|为什么)[\s\S]{0,32}(?:不確定|不确定|不知道)[\s\S]{0,96}(?:不是|是)[\s\S]{0,64}(?:歌|歌曲|樂團|乐团|成員|成员|作品)[\s\S]*[？?]?$/u;
 const R4_DETERMINISTIC_MICROTASK_RE = /(?:(?:^|[，,。！？!?\s])(?:注音|ㄅㄆㄇㄈ|從ㄅ到ㄥ|从ㄅ到ㄥ|[^，,。！？!?\s]{1,24})\s*(?:倒著唸|倒着念|倒著念|倒着唸)(?:嗎|吗)?[？?]?|[^，,。！？!?\n]{1,32}\s*(?:唸|念)\s*[一二三四五六七八九十兩两\d]+\s*次|(?:把|將|将)[^，,。！？!?\n]{1,32}?(?:換成|换成|改成)[^，,。！？!?\n]{1,32})/u;
@@ -943,8 +1027,11 @@ function r8PersonaWorldCanonicalQuery(text) {
     return { target, activity: "person_identity", anchors: [target], predicateAnchors: [] };
   }
   const value = r3ActText(text);
-  if (R8_ACTIVE_PERSONA_ACQUAINTANCE_LIST_RE.test(value)) {
-    return { target: "ACTIVE_CHARACTER_IDENTITY", activity: "relationship", anchors: [], predicateAnchors: ["認識"] };
+  // Named member relationship takes precedence over a speaker-wide inventory.
+  const namedEvent = r14CanonicalParaphraseQuestion(value);
+  if (r15PeopleInventoryQuestion(value) && namedEvent?.activity !== "relationship") {
+    return { target: "ACTIVE_CHARACTER_IDENTITY", activity: "relationship",
+      anchors: [], predicateAnchors: ["認識"] };
   }
   let match = value.match(R8_ACTIVE_PERSONA_ACQUAINTANCE_RE);
   if (match?.[1]?.trim()) {
@@ -1054,7 +1141,7 @@ function r8SemanticContinuationAct(text, previousPlan) {
     ? previousAct.predicateAnchors.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
   if (
-    R8_KNOWN_PEOPLE_CONTINUATION_RE.test(value)
+    r15PeopleInventoryContinuation(value)
     && String(previousAct.target || "") === "ACTIVE_CHARACTER_IDENTITY"
     && String(previousAct.activity || "") === "relationship"
     && previousPredicateAnchors.some((item) => /(?:認識|认识)/u.test(item))
@@ -2092,7 +2179,7 @@ function classifyAction(text, tool = null, interpersonalEnvelope = null) {
   // Compatibility fallback for command-shaped turns not represented by a controlled tool.
   if (DIRECT_TOOL_CONTROL_RE.test(text)) return { requested: true, kind: "tool_control" };
   if (R3_CANONICAL_SELF_EVENT_QUERY_RE.test(text)) return { requested: false, kind: "none" };
-  if (r3QuotedSourceRequest(text)?.transformRequested) return { requested: true, kind: "task_request" };
+  if (r3QuotedSourceRequest(text)?.transformRequested || r14VerbatimPayload(text)) return { requested: true, kind: "task_request" };
   if (r3NaturalTaskRequest(text)) return { requested: true, kind: FAILURE_SYMPTOM_RE.test(text) ? "solution_request" : "task_request" };
   if (SHORT_TASK_TAIL_RE.test(text) || MATH_REQUEST_RE.test(text) || DIRECT_GUIDANCE_REQUEST_RE.test(text) || STRUCTURED_DELIVERY_REQUEST_RE.test(text) || DIRECT_RESULT_REQUEST_RE.test(text) || R3_BOUNDED_REWRITE_RE.test(text) || R3_NATURAL_PRIORITY_TASK_RE.test(text)) return { requested: true, kind: "task_request" };
   if (FAILURE_SYMPTOM_RE.test(text) && R3_TECH_TROUBLESHOOT_CUE_RE.test(text)) return { requested: true, kind: "solution_request" };
@@ -3083,6 +3170,8 @@ function r3QuotedPayload(text) {
 
 function r3VerbatimOutputPayload(text) {
   const value = String(text || "").trim();
+  const extended = r14VerbatimPayload(value);
+  if (extended) return extended;
   if (!R3_VERBATIM_OUTPUT_REQUEST_RE.test(value)) return "";
 
   const quoted = r3QuotedPayload(value);
@@ -3161,7 +3250,7 @@ function r3HasExplicitTaskBeyondCapability(text, action, tool, interpersonalEnve
   if (interpersonalEnvelope) return false;
   if (R3_NEGATED_TASK_INTENT_RE.test(value)) return false;
   const quotedSource = r3QuotedSourceRequest(value);
-  if (R3_BOUNDED_REWRITE_RE.test(value) || quotedSource?.transformRequested) return true;
+  if (R3_BOUNDED_REWRITE_RE.test(value) || quotedSource?.transformRequested || r14VerbatimPayload(value)) return true;
   if (R5_DIRECT_REPLY_DRAFT_RE.test(value) || R6_ELLIPTICAL_REPLY_DRAFT_RE.test(value) || r10DirectedPersonaSocialReply(value)) return true;
   if (action?.requested && action.kind !== "practical_capability") return true;
   if (R3_EXPLICIT_TASK_RE.test(value)) return true;
@@ -3770,7 +3859,7 @@ function buildR3TaskContract(text, semanticText, action, tool, taskRequested, pe
 
   const quotedSource = r3QuotedSourceRequest(text);
   const instructionText = String(semanticText || text || "");
-  const verbatimOutput = R3_VERBATIM_OUTPUT_REQUEST_RE.test(text);
+  const verbatimOutput = R3_VERBATIM_OUTPUT_REQUEST_RE.test(text) || Boolean(r14VerbatimPayload(text));
   const boundedRewrite = R3_BOUNDED_REWRITE_RE.test(text) || Boolean(quotedSource?.transformRequested);
   const rewriteItemCount = boundedRewrite ? r3RequestedRewriteCount(instructionText) : null;
   const alternativesRequested = boundedRewrite && R3_EXPLICIT_ALTERNATIVES_REQUEST_RE.test(instructionText);
@@ -4738,9 +4827,50 @@ export function buildUnifiedTurnPlan(value, options = {}) {
   // interpersonal utterance request. Literal speech requests remain unchanged
   // because they do not satisfy the bounded transform owner.
   const interpersonalEnvelope = quotedSource?.transformRequested ? null : r3InterpersonalRequestEnvelope(semanticText);
-  const tool = compileToolIntent(currentUser, options);
-  const action = classifyAction(currentUser, tool, interpersonalEnvelope);
+  const inventoryCanonical = r8PersonaWorldCanonicalQuery(semanticText);
+  const candidateTool = compileToolIntent(currentUser, options);
+  // An ambiguous memory "remember" fallback is not an instruction to call a
+  // tool when the user is asking the active character which people she knows.
+  // Preserve all explicit concrete tool requests and other fallback kinds.
+  const tool = candidateTool.kind === "hot_fallback"
+      && inventoryCanonical?.target === "ACTIVE_CHARACTER_IDENTITY"
+      && inventoryCanonical?.activity === "relationship"
+      && r15PeopleInventoryQuestion(semanticText)
+    ? { requested: false, kind: "none", toolName: "", arguments: {}, authorization: "none" }
+    : candidateTool;
+  const inventoryQuestion = inventoryCanonical?.target === "ACTIVE_CHARACTER_IDENTITY"
+    && inventoryCanonical?.activity === "relationship"
+    && (inventoryCanonical.predicateAnchors || []).includes("認識")
+    && r15PeopleInventoryQuestion(semanticText) && !tool.requested;
+  const action = inventoryQuestion ? { requested: false, kind: "none" }
+    : classifyAction(currentUser, tool, interpersonalEnvelope);
   let utteranceAct = classifyR3UtteranceAct(currentUser, action, interpersonalEnvelope);
+  if (inventoryCanonical?.target === "ACTIVE_CHARACTER_IDENTITY"
+      && inventoryCanonical?.activity === "relationship"
+      && (inventoryCanonical.predicateAnchors || []).includes("認識")
+      && !action.requested && inventoryQuestion) {
+    utteranceAct = { type: "QUESTION", subtype: "CANONICAL_EVIDENCE_QUERY",
+      target: inventoryCanonical.target, activity: inventoryCanonical.activity,
+      anchors: inventoryCanonical.anchors, predicateAnchors: inventoryCanonical.predicateAnchors };
+  }
+  const paraphraseCanonical = r14CanonicalParaphraseQuestion(semanticText);
+  const reviewedEntityFocus = r15ReviewedEntityFocus(semanticText);
+  const useParaphraseCanonical = Boolean(paraphraseCanonical && !action.requested
+    && !interpersonalEnvelope
+    && utteranceAct?.subtype !== "CANONICAL_EVIDENCE_QUERY");
+  if (useParaphraseCanonical) utteranceAct = paraphraseCanonical;
+  // Preserve established canonical, identity and ordinary-report boundaries.
+  // Only unresolved question forms acquire the reviewed entity fact lane.
+  const specificEventQuestion = Boolean(r12EntityRelationEvidence(semanticText))
+    || /(?:跟|和|與)\s*(?:睦|若葉睦|Mortis).{0,14}(?:談過|聊過|說過|做過|去過|到過|哪(?:裡|里))/u.test(semanticText);
+  const askReviewedEntity = Boolean(reviewedEntityFocus && !action.requested
+    && !interpersonalEnvelope && !specificEventQuestion && isQuestion(semanticText)
+    && (reviewedEntityFocus?.requestedRelation === "identity_link"
+      || utteranceAct?.activity === "named_entity_fact"
+      || utteranceAct?.subtype !== "CANONICAL_EVIDENCE_QUERY")
+    && utteranceAct?.subtype !== "CANONICAL_WORK_FACT"
+    && utteranceAct?.subtype !== "CANONICAL_CHARACTER_CAPABILITY");
+  if (askReviewedEntity) utteranceAct = reviewedEntityFocus;
   const previousSemanticPlan = previousUserText && previousUserText !== currentUser
     ? buildUnifiedTurnPlan(previousUserText, { personaId })
     : null;
@@ -4782,6 +4912,8 @@ export function buildUnifiedTurnPlan(value, options = {}) {
     aspect = String(utteranceAct.activity);
   }
   if (utteranceAct?.subtype === "CANONICAL_RELATIONSHIP_STANCE_CHANGE") aspect = "relationship_stance_change";
+  if (useParaphraseCanonical) aspect = paraphraseCanonical.activity;
+  if (askReviewedEntity) aspect = reviewedEntityFocus.requestedRelation === "identity_link" ? "identity_relation" : "canonical_fact";
   const premises = extractPremises(attributedHistory ? selfHistoryText : semanticText, speechAct, lane, action.kind);
   const premise = premises[0] || { supplied: false, text: "", actor: "none", certainty: "none", authority: "current_user_only" };
   const userImpressionHistory = utteranceAct?.subtype === "USER_SELF_IMPRESSION";
@@ -4810,7 +4942,10 @@ export function buildUnifiedTurnPlan(value, options = {}) {
             : "none";
 
   let subject = subjectFor(currentUser, evidenceBase, action);
-  if (utteranceAct?.continuationMode === "known_people_inventory_followup") {
+  if (utteranceAct?.continuationMode === "known_people_inventory_followup"
+      || (utteranceAct?.target === "ACTIVE_CHARACTER_IDENTITY"
+          && utteranceAct?.activity === "relationship"
+          && (utteranceAct?.predicateAnchors || []).includes("認識"))) {
     subject = { type: "active_persona", name: "self" };
   }
   if (utteranceAct?.subtype === "CANONICAL_RELATIONSHIP_STANCE_CHANGE" && String(utteranceAct?.target || "").trim()) {
@@ -4923,6 +5058,27 @@ export function buildUnifiedTurnPlan(value, options = {}) {
     evidence: {
       ...evidenceBase,
       requestedAspect: aspect,
+      // Entity-triggered canonical facts are additive to the original act,
+      // including statements, tool requests and memory questions.
+      ...(reviewedEntityFocus ? { reviewedEntityFocus: {
+        ...reviewedEntityFocus.reviewedEntityFocus,
+        anchors: reviewedEntityFocus.anchors,
+      } } : {}),
+      ...(reviewedEntityFocus && !(evidenceBase.required && evidenceBase.source === "persona_canonical")
+        ? { auxiliary: [
+          ...(Array.isArray(evidenceBase.auxiliary) ? evidenceBase.auxiliary : []),
+          {
+            required: true,
+            kind: "reviewed_entity_facts",
+            source: "persona_canonical",
+            anchors: reviewedEntityFocus.anchors,
+            requestedAspect: "canonical_fact",
+            reviewedEntityFocus: {
+              ...reviewedEntityFocus.reviewedEntityFocus,
+              anchors: reviewedEntityFocus.anchors,
+            },
+          },
+        ] } : {}),
     },
     // `userPremise` is retained as a compatibility alias for older consumers;
     // `premises` is the canonical clause-level provenance model.

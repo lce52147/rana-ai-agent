@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 import { resolutionKey } from "./guidance.js";
 import { shouldRetrieveLore } from "./retrieval.js";
+import { buildUnifiedTurnPlan } from "../architecture/turn_plan.js";
 
 test("identity corrections and observation reports stay ordinary conversation", () => {
   for (const text of [
@@ -17,7 +18,8 @@ test("identity corrections and observation reports stay ordinary conversation", 
     "我碰到一個不在角色表的人",
     "你看，是立希",
   ]) {
-    assert.equal(shouldRetrieveLore(text), false, text);
+    if (text === "是睦") assert.equal(buildUnifiedTurnPlan(text).utteranceAct?.subtype, "USER_STATEMENT", text);
+    else assert.equal(shouldRetrieveLore(text), false, text);
   }
 });
 

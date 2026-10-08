@@ -1589,9 +1589,28 @@ const PARENTHETICAL_GRAMMAR_MODELS = new Set(["llama-cpp-sister/GGO-G12B-thinkof
 // Conversational turn types only. Task turns (taskContract.required !== false: verbatim, formatting, translation, math, code) stay unconstrained.
 const PARENTHETICAL_GRAMMAR_SUBTYPES = new Set(["USER_STATEMENT", "BARE_TOPIC_REACTION", "INTERPERSONAL_REQUEST", "OPEN_PERSONA_OPINION"]);
 
+// Detect literal payloads by shape at the actual grammar decision boundary.
+// No command-verb vocabulary is required: a contiguous token carrying brackets
+// and ASCII / path syntax is data, whereas （摸摸頭） is a roleplay action.
+function hasBracketedLiteralPayload(text) {
+  const tokens = String(text || "").match(/[^\s，,。！？!?：:「」『』“”"'`]+/gu) || [];
+  // Match a bracket pair within one token, then inspect only the text outside it.
+  // Bracket-only actions (including (hug) and [R2-A01]) are not literal payloads.
+  const bracketPairs = /\([^()]*\)|\[[^\[\]]*\]|\{[^{}]*\}|（[^（）]*）|【[^【】]*】/gu;
+  return tokens.some((token) => {
+    for (const match of token.matchAll(bracketPairs)) {
+      const outside = token.slice(0, match.index) + token.slice(match.index + match[0].length);
+      if (/[A-Za-z0-9._\/\\-]/u.test(outside)) return true;
+    }
+    return false;
+  });
+}
+
+
 function resolveParentheticalGrammarExtraBody(plan, ctx) {
   // Same Gemma 12B served from either host: the local OOGG (primary) or the temporary sister server.
   if (!PARENTHETICAL_GRAMMAR_MODELS.has(`${String(ctx?.modelProviderId || "")}/${String(ctx?.modelId || "")}`)) return undefined;
+  if (hasBracketedLiteralPayload(plan?.currentUser)) return undefined;
   if (!PARENTHETICAL_GRAMMAR_SUBTYPES.has(plan?.utteranceAct?.subtype)) return undefined;
   if (plan?.taskContract?.required !== false) return undefined;
 
@@ -1725,6 +1744,7 @@ export function registerTurnIsolation(api) {
 }
 
 export const __test = {
+  hasBracketedLiteralPayload,
   buildPreGenerationEvidenceStatus,
   classifyCurrentTurnEvidenceNeed,
   resolveParentheticalGrammarExtraBody,

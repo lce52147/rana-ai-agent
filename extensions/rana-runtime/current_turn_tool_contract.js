@@ -248,6 +248,17 @@ export function hasExplicitVisionIntent(value) {
   );
 }
 
+const MEDIA_PATH_KEYS = new Set([
+  "path",
+  "filePath",
+  "file_path",
+  "localPath",
+  "local_path",
+  "sourcePath",
+  "source_path",
+  "paths",
+]);
+
 function normalizeMediaPath(value) {
   const text = String(value || "")
     .trim()
@@ -324,7 +335,12 @@ export function isCurrentUsableImagePath(filePath, provenance = {}) {
   );
   return provenance.attachments.some((item) => {
     if (!item || typeof item !== "object") return false;
-    const serialized = JSON.stringify(item).toLowerCase().replace(/\\\\/g, "\\");
+    // OpenClaw stages every real upload under media\inbound\openclaw-staged-*,
+    // so path fields must not be scanned for these markers.
+    const markers = Object.fromEntries(
+      Object.entries(item).filter(([key]) => !MEDIA_PATH_KEYS.has(key)),
+    );
+    const serialized = JSON.stringify(markers).toLowerCase().replace(/\\\\/g, "\\");
     if (/(?:generated|youtube|thumbnail|preview|staged|synthetic)/iu.test(serialized)) return false;
     if (item.isGenerated === true || item.generated === true || item.userUploaded === false)
       return false;

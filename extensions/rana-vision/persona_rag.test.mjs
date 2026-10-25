@@ -125,7 +125,7 @@ test("Case D: verified Anon maps to canonical lore and the Chinese preferred nam
   const persona = await buildVisionPersonaEvidence(payload, "這是誰？");
   assertPersonaContract(persona);
   assert.equal(persona.queryPlan.subject.entity_id, ANON);
-  assert.equal(persona.resolvedSubject.verifiedName, "あのん");
+  assert.equal(persona.resolvedSubject.verifiedName, "愛音");
   assert.equal(Object.hasOwn(persona, "ranaRecognition"), false);
 });
 
@@ -147,7 +147,7 @@ test("Case F: Anon relationship follow-up retrieves more than recognizes", async
   assert.equal(persona.queryPlan.speaker.entity_id, RANA);
   assert.equal(persona.queryPlan.subject.entity_id, ANON);
   const predicates = new Set(persona.ranaRecognition.positiveRelationshipFacts.map((fact) => fact.predicate));
-  assert.equal(persona.resolvedSubject.verifiedName, "あのん");
+  assert.equal(persona.resolvedSubject.verifiedName, "愛音");
   assert.equal(Object.hasOwn(persona.ranaRecognition, "preferredName"), false);
   assert.equal(Object.hasOwn(persona.ranaRecognition, "ranaCallsThem"), false);
   assert.ok(predicates.has("recognizes"));

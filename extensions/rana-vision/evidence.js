@@ -2,7 +2,7 @@ import { analyzeWithToriiGate } from "./client.js";
 import { analyzeWithLocalOcr } from "./ocr.js";
 import { reverseImageSearch, verifyKnownCandidate } from "./reverse_search.js";
 import { traceVision } from "./debug.js";
-import { identityReferenceCatalog, resolveImageCharacters } from "./character_catalog.js";
+import { catalogIdentityForName, identityReferenceCatalog, resolveImageCharacters } from "./character_catalog.js";
 import { deepSearchExternalIdentity, detectSearchPolicy, workConfidenceGate } from "./deep_search.js";
 import { retrieveLocalIdentity } from "./identity_sidecar_client.js";
 import { lookupDctestScene, resolveSceneLine } from "./scene_index.js";
@@ -12,6 +12,27 @@ const REVERSE_THRESHOLDS = Object.freeze({
   SauceNAO: 0.8,
   IQDB: 0.8,
 });
+
+// The AniList portrait tournament asks the VLM to pick one of many
+// same-work portraits. On 2026-10-25 DCTEST frames it named the wrong
+// MyGO/Ave Mujica member in 3 of 5 accepted cases (e.g. 若麥 -> 燈, 祥子 -> 睦)
+// at 0.95+ confidence, so for catalog characters it is a hint only unless a
+// local source already picked the same character.
+const CATALOG_WORK_PATTERN = /bang\s*dream|mygo|ave\s*mujica/iu;
+
+export function demoteUncorroboratedTournamentIdentity(result, identityResolution) {
+  const identity = result?.resolvedIdentity;
+  const viaTournament = identity?.evidence?.some?.((item) => item?.reason === "trace_work_anilist_ensemble_tournament_visual_match");
+  if (!viaTournament) return;
+  const catalogMatch = catalogIdentityForName(identity.name, identity.nameRomanized);
+  if (!catalogMatch && !CATALOG_WORK_PATTERN.test(String(identity.work || ""))) return;
+  const local = identityResolution?.primaryCharacter;
+  if (catalogMatch && local?.canonicalId === catalogMatch.canonicalId) return;
+  result.unverifiedIdentity = identity;
+  result.resolvedIdentity = null;
+  result.status = "unresolved";
+  result.reason = "anilist_tournament_uncorroborated_catalog_character";
+}
 
 const LOCAL_IDENTITY_THRESHOLDS = Object.freeze({
   locked_local: 0.90,
@@ -773,6 +794,7 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
       dependencies: dependencies.deepSearchDependencies || {},
     });
     deepSearchResult.webMode = webDecision.webMode;
+    demoteUncorroboratedTournamentIdentity(deepSearchResult, identityResolution);
   }
 
   if (canonicalConflict && !webDecision.preserveCanonicalOnUnresolvedConflict) {

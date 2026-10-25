@@ -183,6 +183,38 @@ export function mapSidecarResult(result) {
   };
 }
 
+// The sidecar aggregates views of ONE target per request and rejects a request
+// whose images name more than one parent. Face/upper/full views (F1-F3) share
+// their source target, or the whole image for the fallback views.
+function cropParentId(target) {
+  if (target?.source_target_id) return String(target.source_target_id);
+  if (/^fallback_/u.test(String(target?.type || ""))) return "image";
+  return String(target?.target_id || "");
+}
+
+function groupCropsByParent(crops) {
+  const groups = new Map();
+  for (const crop of crops) {
+    const parent = cropParentId(crop);
+    groups.set(parent, [...(groups.get(parent) || []), crop]);
+  }
+  return [...groups.entries()].map(([parent, items]) => ({ parent, items }));
+}
+
+function mergeSidecarResponses(responses) {
+  if (responses.length === 1) return responses[0];
+  const first = responses[0] || {};
+  return {
+    ...first,
+    status: responses.every((item) => item?.status === "ok") ? "ok" : String(responses.find((item) => item?.status !== "ok")?.status || "partial"),
+    elapsed_ms: Math.max(...responses.map((item) => Number(item?.elapsed_ms || 0))),
+    target_count: responses.reduce((sum, item) => sum + Number(item?.target_count || item?.targets?.length || 0), 0),
+    targets: responses.flatMap((item) => Array.isArray(item?.targets) ? item.targets : []),
+    // Per-parent aggregates describe different people; never merge them.
+    aggregate_decision: null,
+  };
+}
+
 function summarizeCrop(target) {
   const image = Buffer.isBuffer(target?.image) ? target.image : Buffer.from(target?.image || []);
   return {
@@ -239,50 +271,57 @@ export async function retrieveLocalIdentity({ image, mimeType, targets = [], sig
       max_targets: config.maxTargets,
       crops: cropSummaries,
     });
-    const requestBody = {
+    const groups = groupCropsByParent(crops);
+    const requestBodies = groups.map((group) => ({
       request_id: requestId || "",
-      images: crops.map((target) => ({
+      images: group.items.map((target) => ({
         target_id: target.target_id,
+        parent_target_id: group.parent,
         bbox: target.bbox || null,
         type: target.type || "unknown",
         visibility: target.visibility ?? null,
         mime_type: target.mimeType || "image/jpeg",
         data_base64: target.image.toString("base64"),
       })),
-    };
+    }));
     const endpoint = `${config.endpoint}/v1/identity/retrieve`;
     await traceVision(requestId, "identity_sidecar_request", {
       endpoint,
       timeout_ms: config.timeoutMs,
       request_id: requestId || "",
       target_count: crops.length,
+      parent_groups: groups.map((group) => ({ parent: group.parent, target_ids: group.items.map((item) => item.target_id) })),
       targets: cropSummaries,
     });
     const deadline = createDeadline(signal, config.timeoutMs);
     try {
-      const response = await fetchImpl(endpoint, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${config.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: deadline.signal,
-      });
-      const raw = await response.text();
-      let parsed = {};
-      let parseError = "";
-      try { parsed = raw ? JSON.parse(raw) : {}; } catch (error) { parseError = String(error?.message || error); }
-      await traceVision(requestId, "identity_sidecar_response", {
-        endpoint,
-        http_status: response.status,
-        ok: response.ok,
-        parse_error: parseError || null,
-        body: parseError ? { raw: raw.slice(0, 8192), raw_truncated: raw.length > 8192 } : sanitizeSidecarTrace(parsed),
-        elapsed_ms: Date.now() - startedAt,
-      });
-      if (!response.ok) throw new Error(String(parsed?.error || raw || `identity sidecar HTTP ${response.status}`));
-      const mapped = mapSidecarResult(parsed);
+      const responses = await Promise.all(requestBodies.map(async (requestBody) => {
+        const response = await fetchImpl(endpoint, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: deadline.signal,
+        });
+        const raw = await response.text();
+        let parsed = {};
+        let parseError = "";
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch (error) { parseError = String(error?.message || error); }
+        await traceVision(requestId, "identity_sidecar_response", {
+          endpoint,
+          parent_target_id: requestBody.images[0]?.parent_target_id || "",
+          http_status: response.status,
+          ok: response.ok,
+          parse_error: parseError || null,
+          body: parseError ? { raw: raw.slice(0, 8192), raw_truncated: raw.length > 8192 } : sanitizeSidecarTrace(parsed),
+          elapsed_ms: Date.now() - startedAt,
+        });
+        if (!response.ok) throw new Error(String(parsed?.error || raw || `identity sidecar HTTP ${response.status}`));
+        return parsed;
+      }));
+      const mapped = mapSidecarResult(mergeSidecarResponses(responses));
       mapped.round_trip_ms = Date.now() - startedAt;
       await traceVision(requestId, "identity_sidecar_result", {
         status: mapped.status,
@@ -319,6 +358,9 @@ export async function retrieveLocalIdentity({ image, mimeType, targets = [], sig
 }
 
 export const __test = {
+  cropParentId,
+  groupCropsByParent,
+  mergeSidecarResponses,
   confidenceForAggregate,
   confidenceForDecision,
   mapSidecarResult,

@@ -33,6 +33,15 @@ test("legitimate current inbound media requires authoritative image attachment m
   assert.deepEqual(request.provenance.authorizedPaths, [inbound]);
 });
 
+test("OpenClaw staged upload folder is real current inbound media", () => {
+  const staged = "C:\\Users\\Administrator\\.openclaw\\workspace\\media\\inbound\\openclaw-staged-bc14f744\\F01---a5f5.jpg";
+  const request = guidanceTest.imageRequest(
+    `[media attached: ${staged} (image/jpeg)]\n@Rana 這是誰？`,
+    { currentTurnMediaEvidence: { attachments: [{ kind: "image", mimeType: "image/jpeg", path: staged }] } },
+  );
+  assert.equal(request?.sourceType, "inbound_path");
+});
+
 test("verified replied image remains an API-backed source", () => {
   const request = guidanceTest.imageRequest([
     '"chat_id": "channel:900000000000000009"',
@@ -206,4 +215,26 @@ test("combined tool hook leaves reply candidates to guidance but guards fabricat
   }, {});
   assert.equal(typeof fabricated?.prependSystemContext, "string");
   assert.equal(fabricated?.prependContext, undefined);
+});
+
+test("host currentTurnMediaEvidence on the hook context authorizes a staged Discord upload", () => {
+  const hooks = new Map();
+  registerVisionTool({
+    on(name, handler) { hooks.set(name, handler); },
+    registerTool() {},
+  });
+  const staged = "C:\\Users\\Administrator\\.openclaw\\workspace\\media\\inbound\\openclaw-staged-bc14f744\\D01---a5f5.jpg";
+  const ctx = {
+    runId: "host-evidence-run",
+    sessionKey: "agent:main:discord:channel:900000000000000009",
+    currentTurnMediaEvidence: {
+      currentTurn: true,
+      recordedAt: Date.now(),
+      attachments: [{ kind: "image", path: staged, contentType: "image/jpeg" }],
+    },
+  };
+  const result = hooks.get("before_prompt_build")({
+    prompt: `[media attached: ${staged} (image/jpeg)]\n@Rana 這是誰？`,
+  }, ctx);
+  assert.equal(result, undefined);
 });

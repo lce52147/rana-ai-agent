@@ -121,6 +121,9 @@ export function registerVisionTool(api, options = {}) {
     const provenance = currentTurnProvenance(event, ctx) || options.currentTurnMediaEvidence || {};
     const paths = authorizeCurrentPrompt(event, ctx, provenance);
     if (paths.length > 0) return;
+    // A host-verified current-turn image is real even when the model tool is
+    // not authorized; guidance.js runs Vision for it automatically.
+    if (currentInboundPaths(event?.prompt).some((path) => hasAuthoritativeImageAttachment(path, provenance))) return;
     return {
       prependSystemContext: "本輪沒有真實圖片附件。禁止呼叫 rana_analyze_image，也禁止自行編造 image_path、channel_id 或 reply_message_id；直接回答使用者的純文字。",
     };

@@ -4,6 +4,7 @@ import { loadInboundImage, loadRepliedDiscordImage } from "./client.js";
 import { attachVisionFeedbackPanel, discordPromptMetadata, resolveDiscordResponseMessageId } from "./feedback.js";
 import { buildMediaEvidenceContext } from "./media.js";
 import { detectSearchPolicy } from "./deep_search.js";
+import { identityReferenceCatalog, relationshipCatalog } from "./character_catalog.js";
 import { visionLoreSnapshot } from "../rana-runtime/lore/vision_store.js";
 import { rememberResolvedEntities, resolveEntityMentions } from "../rana-runtime/lore/entity_resolver.js";
 import { localDiscordIds } from "../rana-runtime/local_discord_ids.js";
@@ -73,6 +74,10 @@ export function visionTurnKey(event = {}, ctx = {}) {
 }
 
 export function currentTurnProvenance(event, ctx) {
+  // OpenClaw hands plugins trusted per-turn media evidence on the hook
+  // context: one {kind, path, contentType} entry per current-turn image.
+  const host = ctx?.currentTurnMediaEvidence;
+  if (Array.isArray(host?.attachments) && host.attachments.length) return host;
   pruneMediaProvenance();
   const key = visionTurnKey(event, ctx);
   return key ? mediaProvenanceByTurn.get(key) || null : null;
@@ -1088,6 +1093,19 @@ export async function buildVisionPersonaEvidence(payload, userQuestion = "", opt
   });
 }
 
+// DCTEST [無詞] frames label every character in the shot by catalog id. The
+// persona model needs names it may say, and must know which one is itself.
+function sceneCharacterAddresses(ids) {
+  if (!Array.isArray(ids) || !ids.length) return [];
+  const names = new Map(identityReferenceCatalog().map((item) => [item.id, item.name]));
+  const calls = new Map(relationshipCatalog().map((item) => [item.canonicalId, item.ranaCallsThem?.[0] || ""]));
+  return ids.map((id) => {
+    if (id === "rana") return { canonicalId: id, name: "我", self: true };
+    const name = calls.get(id) || names.get(id) || "";
+    return name ? { canonicalId: id, name, self: false } : null;
+  }).filter(Boolean);
+}
+
 function ooggContext(evidence, userQuestion = "", suppliedPayload = null) {
   const payload = suppliedPayload || ooggPayload(evidence, userQuestion);
   const persona = payload.personaEvidence || null;
@@ -1118,11 +1136,34 @@ function ooggContext(evidence, userQuestion = "", suppliedPayload = null) {
       "identity/work 模式只使用 resolvedSubject 的身分狀態、verifiedName 與被明確詢問的 workMetadata；問是誰就只答稱呼，不補關係、記憶或作品履歷。",
     );
   }
+  const rawSceneMatch = persona ? payload?.imageUnderstanding?.sceneMatch || null : null;
+  const sceneMatch = rawSceneMatch
+    ? { ...rawSceneMatch, characters: sceneCharacterAddresses(rawSceneMatch.characters) }
+    : null;
+  if (sceneMatch) {
+    lines.push(
+      "sceneMatch 只說明這張圖是截圖庫裡哪個動畫畫面、哪句台詞，不提供身分。即使 pipelineStatus=unknown，也可以照 sceneMatchRules 提到 line；人名仍只能來自 resolvedSubject 或 sceneMatch.characters，不得從台詞或劇情記憶推人名。",
+    );
+  }
+  // LIVE19D: with the names only under sceneMatch, the reply model still named
+  // just resolvedSubject. Put the full answer on resolvedSubject itself.
+  const everyoneInFrame = sceneMatch && sceneMatch.characters.length > 1 && persona?.resolvedSubject?.pipelineStatus === "known"
+    ? [...sceneMatch.characters].sort((left, right) => Number(right.self) - Number(left.self)).map((item) => item.name).join("和")
+    : "";
+  const personaForModel = everyoneInFrame
+    ? { ...persona, resolvedSubject: { ...persona.resolvedSubject, everyoneInFrame } }
+    : persona;
+  if (everyoneInFrame) {
+    lines.push(
+      `這張圖裡不只一個人。問是誰時回答 resolvedSubject.everyoneInFrame 的全部名字（「是${everyoneInFrame}」），不要只說一個；其中的「我」就是我自己。`,
+    );
+  }
   lines.push(
     "本次圖片 pipeline 已完整執行。直接依 JSON 回答，不得再呼叫 Vision、lore 或其他工具。",
     JSON.stringify({
       userQuestion: payload.userQuestion || userQuestion,
-      personaEvidence: persona,
+      personaEvidence: personaForModel,
+      ...(sceneMatch ? { sceneMatch, sceneMatchRules: payload?.responseContract?.sceneMatchRules || null } : {}),
       analysisStatus: persona?.resolvedSubject?.pipelineStatus || payload?.imageUnderstanding?.analysisStatus || "unknown",
       rewardCue: payload?.imageUnderstanding?.rewardCue || null,
       ...(persona ? {} : { imageUnderstanding: payload?.imageUnderstanding || null }),

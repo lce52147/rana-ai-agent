@@ -198,4 +198,81 @@ await test("sidecar failure degrades to unavailable instead of throwing", async 
   assert.equal(result.accepted.length, 0);
 });
 
+function recordingFetch(bodies) {
+  return async (_url, init) => {
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    const parents = new Set(body.images.map((image) => image.parent_target_id || image.target_id));
+    if (parents.size > 1) {
+      return new Response(JSON.stringify({ error: "cross_target_identity_aggregate_forbidden" }), { status: 400 });
+    }
+    return new Response(JSON.stringify({
+      status: "ok",
+      targets: body.images.map((image) => ({
+        target_id: image.target_id,
+        decision: {
+          accepted: image.target_id === "T2",
+          top: { id: image.target_id === "T2" ? "rana" : "tomori", top_similarity: 0.86, consensus_score: 0.82 },
+          margin: 0.13,
+          supportCount: 2,
+        },
+      })),
+      aggregate_decision: { accepted: false, top: { id: "tomori" } },
+    }), { status: 200 });
+  };
+}
+
+const sidecarConfig = { endpoint: "http://sidecar.test", apiKey: "k", timeoutMs: 1000, maxTargets: 3 };
+const crop = (extra) => ({ image: Buffer.from("c"), mimeType: "image/jpeg", ...extra });
+
+await test("face/upper/full views of one target go out as one parent", async () => {
+  const bodies = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    requestId: "multiview-test",
+    dependencies: {
+      config: sidecarConfig,
+      fetch: recordingFetch(bodies),
+      extractTargets: async () => ["F1", "F2", "F3"].map((id) => crop({ target_id: id, source_target_id: "T1", type: "target_face" })),
+    },
+  });
+  assert.equal(result.status, "ok");
+  assert.equal(bodies.length, 1);
+  assert.deepEqual(bodies[0].images.map((image) => image.parent_target_id), ["T1", "T1", "T1"]);
+});
+
+await test("fallback whole-image views share the image parent", async () => {
+  const bodies = [];
+  await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: sidecarConfig,
+      fetch: recordingFetch(bodies),
+      extractTargets: async () => ["F1", "F2", "F3"].map((id) => crop({ target_id: id, type: "fallback_face" })),
+    },
+  });
+  assert.equal(bodies.length, 1);
+  assert.ok(bodies[0].images.every((image) => image.parent_target_id === "image"));
+});
+
+await test("distinct characters are retrieved separately and merged", async () => {
+  const bodies = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: sidecarConfig,
+      fetch: recordingFetch(bodies),
+      extractTargets: async () => [crop({ target_id: "T1", type: "screen_character" }), crop({ target_id: "T2", type: "screen_character" })],
+    },
+  });
+  assert.equal(result.status, "ok");
+  assert.equal(bodies.length, 2);
+  assert.equal(result.targets.length, 2);
+  assert.equal(result.aggregate_decision, null);
+  assert.equal(result.primary.id, "rana");
+});
+
 console.log(`identity sidecar client tests: ${passed}/${passed} passed`);

@@ -343,6 +343,13 @@ export function identityReferenceCatalog() {
   });
 }
 
+/** Exact (normalized) name or alias lookup; returns the catalog identity or null. */
+export function catalogIdentityForName(...names) {
+  const wanted = new Set(names.map(normalized).filter((value) => value.length >= 2));
+  if (!wanted.size) return null;
+  return identities.find((identity) => identity.aliases.some((alias) => wanted.has(normalized(alias)))) || null;
+}
+
 export function relationshipCatalog() {
   return impressionData.characters;
 }

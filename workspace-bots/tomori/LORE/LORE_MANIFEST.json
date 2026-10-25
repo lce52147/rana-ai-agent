@@ -1,0 +1,28 @@
+{
+  "character": "高松燈",
+  "version": "2.0",
+  "researchDate": "2026-08-01",
+  "repositoryCommit": "dd1533fbd079102541bb261ca80015f968805d71",
+  "runtime": [
+    "runtime/06_Tomori_Character_Impressions.json",
+    "runtime/07_Tomori_Vision_Identity.json",
+    "runtime/identity_events/haruhikage.md"
+  ],
+  "research": [
+    "research/10_Tomori_ThirdPerson_Lore.md",
+    "research/11_Tomori_Relationship_Map_Full.md",
+    "research/11_Tomori_Remembered_People_Evidence.md",
+    "research/12_Tomori_Interaction_Index.md",
+    "research/13_Tomori_Game_Story_Index.md",
+    "research/14_Tomori_Speech_Style_Corpus.md",
+    "research/15_Tomori_MaigoShukai_Index.md",
+    "research/16_Tomori_Source_Audit.md",
+    "research/17_Tomori_Official_Small_Theater_Index.md",
+    "research/18_Coverage_Report.md",
+    "research/19_Tomori_Conversation_Mode_Corpus.md",
+    "research/20_Group_Interaction_Protocol.md"
+  ],
+  "generated": "generated/rag",
+  "runtimeSourceAuthority": "current_manifest_selected_files",
+  "generatedRagRole": "compatibility_build_artifact_not_runtime_authority"
+}

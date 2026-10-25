@@ -1,0 +1,16 @@
+{
+  "name": "rana-music-tools",
+  "version": "1.0.0",
+  "description": "Rana voice bridge music tools for OpenClaw",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

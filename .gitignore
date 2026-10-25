@@ -1,0 +1,100 @@
+# Allowlist .gitignore. Everything is ignored unless it is listed in the allow section below.
+# To track a new top-level file or directory, add "!/name" or "!/name/" to the allow section.
+/*
+!/.gitignore
+!/extensions/
+!/workspace/
+!/workspace-bots/
+!/scripts/
+!/EXTERNAL_BINARIES.md
+!/application.yml
+!/gateway.cmd
+!/gateway_visible.cmd
+!/gateway_visible.ps1
+!/start LIVE.cmd
+!/START_OOGG.cmd
+!/discord_ids.example.json
+
+# ---- never track, even inside allowed directories ----
+# credentials, device identity, per-device state
+openclaw.json
+openclaw.json.*
+**/discord_ids.local.json
+identity/
+devices/
+**/auth-profiles*
+**/cookies*.txt
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+**/identity-sidecar.json
+**/.*-state.json
+# backups
+*.bak
+*.bak.*
+*.bk
+# environments, caches, archives, models, logs
+**/node_modules/
+**/.venv/
+**/venv/
+**/site-packages/
+**/__pycache__/
+*.zip
+*.gguf
+*.log
+*.tap
+# runtime data inside workspace (received media, agent memory, regenerable RAG output)
+/workspace/media/
+/workspace/memory/
+/workspace/LORE/generated/
+/workspace/tools.disabled/
+# large binaries are documented in EXTERNAL_BINARIES.md instead of being tracked
+*.jar
+*.dll
+*.exe
+*.pyd
+*.so
+*.7z
+*.whl
+/workspace/tools/ffmpeg/
+# old backups and archived notes are not part of the project
+**/backup/
+**/backups/
+**/archive_notes/
+# personal data about real people (group members) must never be published
+/workspace/MEMORY.md
+**/MEMORY.md
+/workspace/CODEX_RANA_OPENCLAW_HANDOFF_v1.md
+/workspace/Rana_Personal_Runtime_Contract_Codex_Baseline.md
+/workspace/tests/v5_smoke_prompts.txt
+
+# four public persona definitions only; keep runtime memory/session state private
+/workspace-bots/*
+!/workspace-bots/tomori/
+!/workspace-bots/anon/
+!/workspace-bots/soyo/
+!/workspace-bots/taki/
+/workspace-bots/*/*
+!/workspace-bots/*/PERSONA.json
+!/workspace-bots/*/SOUL.md
+!/workspace-bots/*/IDENTITY.md
+!/workspace-bots/*/AGENTS.md
+!/workspace-bots/*/USER.md
+!/workspace-bots/*/TOOLS.md
+!/workspace-bots/*/LORE/
+!/workspace-bots/*/LORE/**
+/workspace-bots/*/LORE/generated/
+**/memory/
+**/sessions/
+/agents/
+
+# runtime state / locks / dated backups / temp scripts (cleanup 2026-10-07)
+/workspace/openclaw-workspace-state.json
+/workspace/.openclaw/
+/workspace/services/music_core/.mygo_voice_bridges.lock
+/workspace/services/rana_hot_tools/monitors.json
+/workspace/services/rana_hot_tools/reminders.json
+*.bak-*
+_tmp_*

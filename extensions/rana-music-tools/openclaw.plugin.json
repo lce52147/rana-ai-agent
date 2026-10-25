@@ -1,0 +1,26 @@
+{
+  "id": "rana-music-tools",
+  "name": "Rana Music Tools",
+  "description": "Registers Rana music and voice tools for the local voice bridge.",
+  "contracts": {
+    "tools": [
+      "rana_play_music",
+      "rana_stop_music",
+      "rana_show_queue",
+      "rana_skip_music",
+      "rana_volume_music",
+      "rana_join_voice",
+      "rana_leave_voice"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8081"
+      }
+    }
+  }
+}

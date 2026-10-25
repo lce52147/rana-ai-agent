@@ -1,0 +1,13 @@
+{
+  "embedding": {
+    "endpoint": "http://127.0.0.1:6971",
+    "model": "embeddinggemma-2-Q8_0.gguf",
+    "timeoutMs": 7565,
+    "cacheDir": "workspace/LORE/generated/rag/embeddings"
+  },
+  "k": 3,
+  "embeddingThreshold": 0.48,
+  "noEntityEmbeddingThreshold": 0.62,
+  "fallbackThreshold": 0.3,
+  "noEntityFallbackThreshold": 0.7
+}

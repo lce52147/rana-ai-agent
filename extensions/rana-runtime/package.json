@@ -1,0 +1,14 @@
+{
+  "name": "rana-runtime",
+  "version": "2.5.11",
+  "type": "module",
+  "main": "index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "dependencies": {
+    "opencc-js": "1.4.1"
+  }
+}

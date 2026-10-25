@@ -1,0 +1,55 @@
+{
+  "schema": "rana.current-events.v1",
+  "description": "",
+  "source": "https://bang-dream.com/events",
+  "fetchedAt": "2026-10-15T07:35:33.024Z",
+  "events": [
+    {
+      "id": "bushiroad-fashion-journey",
+      "title": "Bushiroad Fashion Journey",
+      "category": "ライブ",
+      "dateText": "2026年10月25日(日)",
+      "start": "2026-10-25",
+      "end": "2026-10-25",
+      "place": "Shibuya Hikarie",
+      "artists": [
+        "MyGO!!!!!",
+        "夢限大みゅーたいぷ"
+      ],
+      "url": "https://bang-dream.com/events/bushiroad-fashion-journey/",
+      "status": "pending",
+      "fetchedAt": "2026-10-15T07:35:33.018Z"
+    },
+    {
+      "id": "mygo_9th_hyogo",
+      "title": "MyGO!!!!! 9th LIVE「つなぎ目の向こうに」- 神戸再景編 -",
+      "category": "ライブ",
+      "dateText": "2026年11月14日(土)・15日(日)",
+      "start": "2026-11-14",
+      "end": "2026-11-15",
+      "place": "ワールド記念ホール（神戸ポートアイランドホール）",
+      "artists": [
+        "MyGO!!!!!"
+      ],
+      "url": "https://bang-dream.com/events/mygo_9th_hyogo/",
+      "status": "pending",
+      "fetchedAt": "2026-10-15T07:35:33.018Z"
+    },
+    {
+      "id": "wonderlivet-2026",
+      "title": "WONDERLIVET 2026",
+      "category": "ライブ",
+      "dateText": "2026年11月20日(金)・21日(土)・22日(日)",
+      "start": "2026-11-20",
+      "end": "2026-11-22",
+      "place": "KINTEX HALL 7·8·9·10（韓国）",
+      "artists": [
+        "Roselia",
+        "MyGO!!!!!"
+      ],
+      "url": "https://bang-dream.com/events/wonderlivet-2026/",
+      "status": "pending",
+      "fetchedAt": "2026-10-15T07:35:33.018Z"
+    }
+  ]
+}

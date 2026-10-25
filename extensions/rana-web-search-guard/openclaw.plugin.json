@@ -1,0 +1,11 @@
+{
+  "id": "rana-web-search-guard",
+  "name": "Rana Web Search Guard",
+  "description": "Routes unfamiliar-term and explicit lookup failures through OpenClaw web_search before finalizing.",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

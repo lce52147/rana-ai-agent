@@ -1,0 +1,12 @@
+{
+  "_comment": "Fake IDs for fresh clones and tests. Copy to discord_ids.local.json (gitignored) and fill in real Discord IDs.",
+  "ownerUserId": "900000000000000001",
+  "ranaBotUserId": "900000000000000005",
+  "guildId": "900000000000000006",
+  "textChannelId": "900000000000000007",
+  "voiceChannelId": "900000000000000007",
+  "security": {
+    "ownerIds": ["900000000000000001", "900000000000000002"],
+    "memoryWriteRoles": ["900000000000000004"]
+  }
+}

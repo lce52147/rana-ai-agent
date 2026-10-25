@@ -1,0 +1,28 @@
+{
+  "character": "千早愛音",
+  "version": "2.0",
+  "researchDate": "2026-08-01",
+  "repositoryCommit": "dd1533fbd079102541bb261ca80015f968805d71",
+  "runtime": [
+    "runtime/06_Anon_Character_Impressions.json",
+    "runtime/07_Anon_Vision_Identity.json",
+    "runtime/identity_events/haruhikage.md"
+  ],
+  "research": [
+    "research/10_Anon_ThirdPerson_Lore.md",
+    "research/11_Anon_Relationship_Map_Full.md",
+    "research/11_Anon_Remembered_People_Evidence.md",
+    "research/12_Anon_Interaction_Index.md",
+    "research/13_Anon_Game_Story_Index.md",
+    "research/14_Anon_Speech_Style_Corpus.md",
+    "research/15_Anon_MaigoShukai_Index.md",
+    "research/16_Anon_Source_Audit.md",
+    "research/17_Anon_Official_Small_Theater_Index.md",
+    "research/18_Coverage_Report.md",
+    "research/19_Anon_Conversation_Mode_Corpus.md",
+    "research/20_Group_Interaction_Protocol.md"
+  ],
+  "generated": "generated/rag",
+  "runtimeSourceAuthority": "current_manifest_selected_files",
+  "generatedRagRole": "compatibility_build_artifact_not_runtime_authority"
+}

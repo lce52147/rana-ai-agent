@@ -30,7 +30,7 @@ export function validateSidecarConfig(value) {
   return { endpoint, apiKey, timeoutMs, maxTargets };
 }
 
-async function loadSidecarConfig(dependencies = {}) {
+export async function loadSidecarConfig(dependencies = {}) {
   if (dependencies.config) return validateSidecarConfig(dependencies.config);
   const configPath = path.resolve(String(
     dependencies.configPath
@@ -42,6 +42,10 @@ async function loadSidecarConfig(dependencies = {}) {
   cachedConfig = validateSidecarConfig(parsed);
   cachedConfigPath = configPath;
   return cachedConfig;
+}
+
+export function createSidecarDeadline(parentSignal, timeoutMs) {
+  return createDeadline(parentSignal, timeoutMs);
 }
 
 function createDeadline(parentSignal, timeoutMs) {

@@ -155,6 +155,19 @@ function acceptedLocalEmbeddingMatches(evidence) {
   })).filter((item) => item.id && item.confidence >= 0.72);
 }
 
+function sceneIndexMatches(evidence) {
+  const lookup = evidence?.scene_lookup;
+  if (lookup?.accepted !== true || !Array.isArray(lookup?.match?.labels)) return [];
+  return lookup.match.labels.map((id) => ({
+    id: String(id || "").trim(),
+    similarity: Number(lookup.match.similarity || 0),
+    tier: String(lookup.tier || ""),
+    hubLead: lookup.hub_lead ?? null,
+    series: String(lookup.match.series || ""),
+    scene: String(lookup.match.scene || ""),
+  })).filter((item) => item.id);
+}
+
 function confidenceLabel(score) {
   if (score >= 0.9) return "high";
   if (score >= 0.72) return "medium";
@@ -215,6 +228,20 @@ export function resolveCanonicalIdentities(evidence, userQuestion = "") {
       instanceCount: match.instanceCount,
       targetIds: match.targetIds,
       aggregate: match.aggregate,
+    });
+  }
+
+  for (const match of sceneIndexMatches(evidence)) {
+    const identity = identityById.get(match.id);
+    if (!identity) continue;
+    // exact: the same frame (resized or recompressed); likely: an edited or cropped copy of it.
+    putCandidate(candidates, identity, match.tier === "exact" ? 0.95 : 0.82, "dctest_scene_match", {
+      visualEvidence: "Near-duplicate of a labeled DCTEST anime frame",
+      similarity: match.similarity,
+      tier: match.tier,
+      hubLead: match.hubLead,
+      series: match.series,
+      scene: match.scene,
     });
   }
 

@@ -113,9 +113,9 @@ $services = @(
 
 function Start-GatewayOwner {
   if ($HiddenLaunch) {
-    $p = Start-HiddenServiceProcess -Key 'gateway' -FilePath 'schtasks.exe' -ArgumentList @('/Run', '/TN', '\OpenClaw Gateway') -Wait
+    $p = Start-HiddenServiceProcess -Key 'gateway' -FilePath 'schtasks.exe' -ArgumentList @('/Run', '/TN', '"\OpenClaw Gateway"') -Wait
   } else {
-    $p = Start-Process -FilePath 'schtasks.exe' -ArgumentList '/Run','/TN','\OpenClaw Gateway' -WindowStyle Hidden -Wait -PassThru
+    $p = Start-Process -FilePath 'schtasks.exe' -ArgumentList '/Run','/TN','"\OpenClaw Gateway"' -WindowStyle Hidden -Wait -PassThru
   }
   return ($p.ExitCode -eq 0)
 }

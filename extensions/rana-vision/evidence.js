@@ -5,6 +5,7 @@ import { traceVision } from "./debug.js";
 import { identityReferenceCatalog, resolveImageCharacters } from "./character_catalog.js";
 import { deepSearchExternalIdentity, detectSearchPolicy, workConfidenceGate } from "./deep_search.js";
 import { retrieveLocalIdentity } from "./identity_sidecar_client.js";
+import { lookupDctestScene, resolveSceneLine } from "./scene_index.js";
 
 const REVERSE_THRESHOLDS = Object.freeze({
   "trace.moe": 0.87,
@@ -142,6 +143,7 @@ function directCharacterEvidence(identity) {
       "ocr_alias_match",
       "exact_sha256_official_reference",
       "accepted_reverse_alias_match",
+      "dctest_scene_match",
       "local_embedding_open_set_match",
     ].includes(reason);
   });
@@ -548,6 +550,9 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
   const analyze = dependencies.analyze || analyzeWithToriiGate;
   const reverseLookup = dependencies.reverse || reverseImageSearch;
   const localOcr = dependencies.ocr || analyzeWithLocalOcr;
+  const sceneLookup = dependencies.sceneLookup || (dependencies.analyze
+    ? async () => ({ status: "skipped", source: "dctest_scene_index", accepted: false, match: null, reason: "test_override_without_scene_lookup" })
+    : lookupDctestScene);
   const verify = dependencies.verify || verifyKnownCandidate;
   const policyDetector = dependencies.searchPolicy || detectSearchPolicy;
   const deepSearch = dependencies.deepSearch || deepSearchExternalIdentity;
@@ -564,11 +569,15 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
   const searchPolicy = policyDetector(prompt);
   await trace(requestId, "search_policy", searchPolicy, { force: true });
 
-  const [visionResult, ocrResult, reverseResult] = await Promise.allSettled([
+  const [visionResult, ocrResult, reverseResult, sceneResult] = await Promise.allSettled([
     analyze(loaded.image, loaded.mimeType, signal, requestId),
     localOcr(loaded.image, loaded.mimeType, signal, requestId),
     reverseLookup(loaded.image, loaded.mimeType, signal, requestId),
+    sceneLookup({ image: loaded.image, mimeType: loaded.mimeType, signal, requestId, dependencies: dependencies.sceneDependencies || {} }),
   ]);
+  const sceneRaw = sceneResult.status === "fulfilled"
+    ? sceneResult.value
+    : { status: "unavailable", source: "dctest_scene_index", accepted: false, match: null, error: String(sceneResult.reason?.message || sceneResult.reason) };
   const vision = visionResult.status === "fulfilled"
     ? visionResult.value
     : { status: "unavailable", source: "ToriiGate", raw: "", observation: null, error: String(visionResult.reason?.message || visionResult.reason) };
@@ -630,6 +639,7 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
     error: reverse?.error || null,
   }, { force: true });
 
+  const scene = resolveSceneLine(sceneRaw, ocr);
   const gate = evaluateReverseEvidence(reverse, vision, ocr);
   const workGate = workConfidenceGate(reverse);
   await trace(requestId, "work_confidence_gate", {
@@ -703,6 +713,7 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
     {},
     localIdentityRetrieval,
   );
+  provisional.scene_lookup = scene;
   const identityResolution = resolveImageCharacters(provisional, prompt);
   await trace(requestId, "identity_resolver_output", {
     detected_characters: identityResolution?.detectedCharacters || [],
@@ -795,6 +806,16 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
     localIdentityRetrieval,
   );
   normalized.search_policy = searchPolicy;
+  normalized.scene_lookup = scene;
+  normalized.standardized.scene_match = scene.accepted ? {
+    tier: scene.tier,
+    series: scene.match.series,
+    line: scene.match.line,
+    line_source: scene.match.line_source,
+    wordless: scene.match.wordless,
+    characters: scene.match.labels,
+    similarity: scene.match.similarity,
+  } : null;
   normalized.local_confidence_gate = webDecision;
   normalized.work_confidence_gate = workGate;
   normalized.deep_search = deepSearchResult;

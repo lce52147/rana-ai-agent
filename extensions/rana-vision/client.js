@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { traceVision } from "./debug.js";
 import { characterAtlases } from "./character_catalog.js";
+import { localHosts } from "./local_hosts.js";
 import {
   identityLikeTarget,
   identityTargetMultiViewTargets,
@@ -15,9 +16,10 @@ import {
 
 export { identityTargetMultiViewTargets, shouldUseIdentityFallbackTargets } from "./identity_target_multiview.js";
 
-const VISION_LAN_BASE_URL = "http://192.168.50.3:6970";
+const LOCAL_HOSTS = localHosts();
+const VISION_LAN_BASE_URL = String(LOCAL_HOSTS.visionBaseUrl || "http://127.0.0.1:6970").trim();
 const VISION_PRIMARY_BASE_URL = String(process.env.RANA_VISION_BASE_URL || VISION_LAN_BASE_URL).trim();
-const VISION_FALLBACK_BASE_URL = String(process.env.RANA_VISION_FALLBACK_BASE_URL || "http://100.99.83.84:6970").trim();
+const VISION_FALLBACK_BASE_URL = String(process.env.RANA_VISION_FALLBACK_BASE_URL || LOCAL_HOSTS.visionFallbackBaseUrl || "").trim();
 const OPENCLAW_HOME = path.resolve(process.env.OPENCLAW_HOME || "C:\\Users\\Administrator\\.openclaw");
 const INBOUND_DIRS = Object.freeze([...new Set([
   path.resolve(OPENCLAW_HOME, "media", "inbound"),
@@ -41,7 +43,7 @@ let visionModelCache = { checkedAt: 0, id: "", baseUrl: "" };
 const VISION_OBSERVATION_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["m", "x", "t", "s"],
+  required: ["m", "x", "t", "s", "z"],
   properties: {
     m: { type: "string", enum: ["photo", "anime", "illustration", "game_ui", "manga", "poster", "other"] },
     x: { type: "array", maxItems: 4, items: { type: "string" } },
@@ -66,6 +68,12 @@ const VISION_OBSERVATION_SCHEMA = {
       },
     },
     s: { type: "string" },
+    // At most one region the model could not read or see clearly at this size; [] when all is clear.
+    z: {
+      type: "array",
+      maxItems: 1,
+      items: { type: "array", minItems: 4, maxItems: 4, items: { type: "integer", minimum: 0, maximum: 1000 } },
+    },
   },
 };
 
@@ -658,6 +666,7 @@ function visionUserContent(image, mimeType) {
         "Coordinates are integers 0-1000. left<right and top<bottom. Do not use width/height.",
         "Prefer physical foreground subjects over monitors or posters.",
         "Use Traditional Chinese for f and s. Keep x text verbatim. Keep s under 20 Chinese characters.",
+        "z: if some text or a small object is too small or blurry to read or recognise, give its box [left,top,right,bottom] (0-1000) once; otherwise z is [].",
       ].join("\n"),
     },
     { type: "image_url", image_url: { url: `data:${mimeType};base64,${image.toString("base64")}` } },
@@ -1108,6 +1117,115 @@ function sanitize6970CapturePayload(value) {
   return value;
 }
 /* RANA_VISION_6970_RAW_CAPTURE_END */
+const VISION_ZOOM_ENABLED = process.env.RANA_VISION_ZOOM !== "0";
+const VISION_ZOOM_MAX_EDGE = 1024;
+const VISION_ZOOM_TIMEOUT_MS = 30000;
+const VISION_ZOOM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["x", "d"],
+  properties: {
+    x: { type: "array", maxItems: 4, items: { type: "string" } },
+    d: { type: "string" },
+  },
+};
+
+// The z box from the first look, in 0-1000 units; null unless it is a real sub-region (under half the frame).
+export function parseZoomRequest(raw) {
+  let parsed = null;
+  try { parsed = JSON.parse(String(raw || "").slice(String(raw || "").indexOf("{"), String(raw || "").lastIndexOf("}") + 1)); } catch { return null; }
+  const box = Array.isArray(parsed?.z) ? parsed.z[0] : null;
+  if (!Array.isArray(box) || box.length !== 4 || !box.every((v) => Number.isFinite(Number(v)))) return null;
+  const [l, t, r, b] = box.map((v) => Math.max(0, Math.min(1000, Math.round(Number(v)))));
+  if (!(r - l >= 20 && b - t >= 20)) return null;
+  if ((r - l) * (b - t) > 500000) return null;
+  return [l, t, r, b];
+}
+
+// Pad the box by half its size on each side (context for the model) and keep it inside the frame.
+export function zoomCropFraction([l, t, r, b]) {
+  const pw = (r - l) / 2;
+  const ph = (b - t) / 2;
+  const x0 = Math.max(0, l - pw) / 1000;
+  const y0 = Math.max(0, t - ph) / 1000;
+  const x1 = Math.min(1000, r + pw) / 1000;
+  const y1 = Math.min(1000, b + ph) / 1000;
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
+async function cropZoomRegion(image, mimeType, box) {
+  const [x, y, w, h] = zoomCropFraction(box);
+  const inputPath = path.join(tmpdir(), `rana-vision-zoom-src-${randomUUID()}${extensionForMime(mimeType)}`);
+  const outputPath = path.join(tmpdir(), `rana-vision-zoom-${randomUUID()}.jpg`);
+  await writeFile(inputPath, image);
+  try {
+    await execFileAsync("ffmpeg", [
+      "-v", "error", "-y", "-i", inputPath,
+      "-vf", `crop=iw*${w}:ih*${h}:iw*${x}:ih*${y},scale=${VISION_ZOOM_MAX_EDGE}:${VISION_ZOOM_MAX_EDGE}:force_original_aspect_ratio=decrease:flags=lanczos`,
+      "-frames:v", "1", "-q:v", "2", outputPath,
+    ], { windowsHide: true });
+    return await readFile(outputPath);
+  } finally {
+    await unlink(inputPath).catch(() => {});
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
+// Merge a zoomed second look into the first observation: new text lines and one short detail line.
+export function mergeZoomObservation(observation, zoomRaw, box) {
+  let parsed = null;
+  try { parsed = JSON.parse(String(zoomRaw || "").slice(String(zoomRaw || "").indexOf("{"), String(zoomRaw || "").lastIndexOf("}") + 1)); } catch { return observation; }
+  const text = (Array.isArray(parsed?.x) ? parsed.x : []).map((item) => String(item || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+  const detail = String(parsed?.d || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const visible = [...new Set([...(observation.visible_text || []), ...text])].slice(0, 8);
+  return {
+    ...observation,
+    visible_text: visible,
+    summary: detail ? `${observation.summary}${observation.summary ? "；" : ""}放大看：${detail}`.slice(0, 500) : observation.summary,
+    zoom: { box, text, detail },
+  };
+}
+
+async function lookAgainZoomed({ image, mimeType, box, baseUrl, model, signal, requestId }) {
+  const startedAt = Date.now();
+  const request = abortable(signal, VISION_ZOOM_TIMEOUT_MS);
+  try {
+    const crop = await cropZoomRegion(image, mimeType, box);
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: 160,
+        cache_prompt: false,
+        response_format: { type: "json_schema", json_schema: { name: "vision_zoom", strict: true, schema: VISION_ZOOM_SCHEMA } },
+        messages: [
+          { role: "system", content: "You are ToriiGate, a visual observation stage. Describe visible evidence accurately and return only the requested JSON. Do not infer identity from fandom knowledge." },
+          { role: "user", content: [
+            { type: "text", text: [
+              "This is an enlarged part of a picture that was too small to see before.",
+              "x: every readable text line, verbatim (at most 4). d: what is visible here, in Traditional Chinese, under 30 characters.",
+              "Visible evidence only. Never guess names, franchises, or relationships. If still unreadable, say so in d.",
+            ].join("\n") },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${crop.toString("base64")}` } },
+          ] },
+        ],
+      }),
+      signal: request.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    const raw = String(data?.choices?.[0]?.message?.content || "").trim();
+    await traceVision(requestId, "toriigate_zoom_response", { http_status: response.status, box, raw: raw.slice(0, 4000), duration_ms: Date.now() - startedAt });
+    return response.ok && raw ? raw : "";
+  } catch (error) {
+    await traceVision(requestId, "toriigate_zoom_failed", { box, error: String(error?.message || error), duration_ms: Date.now() - startedAt }).catch(() => {});
+    return "";
+  } finally {
+    request.close();
+  }
+}
+
 export async function analyzeWithToriiGate(image, mimeType, signal, requestId) {
   const startedAt = Date.now();
   const request = abortable(signal, VISION_TIMEOUT_MS);
@@ -1148,8 +1266,15 @@ export async function analyzeWithToriiGate(image, mimeType, signal, requestId) {
     if (!response.ok) throw new Error(String(data?.error?.message || data?.error || body || `HTTP ${response.status}`));
     const raw = String(data?.choices?.[0]?.message?.content || "").trim();
     if (!raw) throw new Error("vision returned no description");
-    const observation = parseObservation(raw);
+    let observation = parseObservation(raw);
     const templateResponse = observationLooksTemplate(raw, observation);
+    const zoomBox = VISION_ZOOM_ENABLED && !templateResponse ? parseZoomRequest(raw) : null;
+    if (zoomBox) {
+      // Look again (OpenVLHarness-style zoom): crop the region the model could not read from the
+      // full-size original, not the 1280 px copy, and ask once more about that region only.
+      const zoomRaw = await lookAgainZoomed({ image, mimeType, box: zoomBox, baseUrl, model, signal, requestId });
+      if (zoomRaw) observation = mergeZoomObservation(observation, zoomRaw, zoomBox);
+    }
     await traceVision(requestId, "toriigate_identity_observation", {
       http_status: response.status,
       requested_model: model,
@@ -1938,5 +2063,8 @@ export const __test = {
   normalizedTarget,
   resizeVisionBuffer,
   cropVisionTargets,
+  parseZoomRequest,
+  zoomCropFraction,
+  mergeZoomObservation,
   tmpdir,
 };

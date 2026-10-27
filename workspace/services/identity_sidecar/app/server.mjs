@@ -17,6 +17,7 @@ import {
   versions,
 } from "./identity-engine.mjs";
 import { createJobPool } from "./job-pool.mjs";
+import { createCcipEngine, resolveCcipOptions } from "./ccip-engine.mjs";
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.dirname(APP_DIR);
@@ -43,6 +44,8 @@ const config = {
   maxQueuedJobs: Math.max(1, Math.min(32, Number(rawConfig.maxQueuedJobs || 8))),
 };
 configure(config);
+// Face detection + CCIP is opt-in: it needs the ONNX models under ccip.modelDir and the bank file.
+const ccip = rawConfig.ccip ? createCcipEngine(resolveCcipOptions(rawConfig.ccip, ROOT_DIR)) : null;
 await mkdir(path.join(ROOT_DIR, "logs"), { recursive: true });
 const logPath = path.join(ROOT_DIR, "logs", "sidecar.jsonl");
 
@@ -155,6 +158,7 @@ const server = http.createServer(async (req, res) => {
         embedding_contract_version: versions.embedding_contract,
         index_contract_version: versions.index_contract,
         index: currentIndexDescriptor(),
+        ccip: ccip ? await ccip.status() : { configured: false },
         ...jobPool.snapshot(),
         pid: process.pid,
         uptime_s: Math.round(process.uptime()),
@@ -205,6 +209,24 @@ const server = http.createServer(async (req, res) => {
         target_count: body.images.length,
         status: result.status,
         error_count: result.error_count || 0,
+        elapsed_ms: Date.now() - started,
+      });
+      return json(res, 200, { request_id: body.request_id || "", ...result });
+    }
+
+    if (req.method === "POST" && url.pathname === "/v1/identity/faces") {
+      if (!ccip) return json(res, 501, { error: "ccip_not_configured" });
+      const body = await bodyJson(req);
+      if (!body?.data_base64) return json(res, 400, { error: "data_base64 is required" });
+      const image = Buffer.from(String(body.data_base64), "base64");
+      if (!image.length || image.length > config.maxImageBytes) {
+        return json(res, 413, { error: `image must be 1-${config.maxImageBytes} bytes` });
+      }
+      const result = await enqueue(() => ccip.identifyFaces(image));
+      await log("faces_complete", {
+        request_id: body.request_id || "",
+        face_count: result.faces.length,
+        accepted: result.faces.filter((face) => face.decision.accepted).map((face) => face.decision.id),
         elapsed_ms: Date.now() - started,
       });
       return json(res, 200, { request_id: body.request_id || "", ...result });

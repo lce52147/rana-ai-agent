@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { localHosts } from "../local_hosts.js";
 
 const [target, atlas] = await Promise.all([
   readFile(new URL("../references/source/tomori.png", import.meta.url)),
@@ -18,7 +19,7 @@ const content = [
   { type: "text", text: "Official reference grid:" },
   { type: "image_url", image_url: { url: `data:image/png;base64,${atlas.toString("base64")}` } },
 ];
-const response = await fetch("http://100.99.83.84:6970/v1/chat/completions", {
+const response = await fetch(`${String(process.env.RANA_VISION_BASE_URL || localHosts().visionBaseUrl).replace(/\/+$/u, "")}/v1/chat/completions`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({

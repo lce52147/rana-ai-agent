@@ -113,3 +113,28 @@ test("rejected sidecar top candidate remains non-authoritative even when its sco
   }, "這是誰");
   assert.equal(resolved.primaryCharacter, null);
 });
+
+test("an accepted face outranks a name read from on-screen text (LIVE22 W02)", () => {
+  const resolved = resolveImageCharacters({
+    local_identity_retrieval: {
+      accepted: [{ id: "rana", confidence_score: 0.94, confidence: "high", instance_count: 1, target_ids: ["F1"], evidence: "ccip_face_open_set_accept" }],
+    },
+    official_reference_match: { matches: [] },
+    local_ocr: { normalized_lines: ["通知センター", "凛々子"] },
+    reverse_image: { accepted: [] },
+  }, "這是誰？");
+  assert.equal(resolved.primaryCharacter.canonicalId, "rana");
+  const ririko = resolved.detectedCharacters.find((item) => item.canonicalId === "ririko");
+  assert.equal(ririko.confidence, "low");
+  assert.equal(ririko.impression, null);
+});
+
+test("a name read from on-screen text still identifies when no face is matched", () => {
+  const resolved = resolveImageCharacters({
+    local_identity_retrieval: { accepted: [] },
+    official_reference_match: { matches: [] },
+    local_ocr: { normalized_lines: ["凛々子"] },
+    reverse_image: { accepted: [] },
+  }, "這是誰？");
+  assert.equal(resolved.primaryCharacter.canonicalId, "ririko");
+});

@@ -43,5 +43,10 @@
     "maxConcurrentJobs":  2,
     "maxEmbeddingBatchItems":  24,
     "modelVersion":  "Xenova/clip-vit-base-patch32",
-    "indexMetadataPath":  "references/identity-index-metadata.json"
+    "indexMetadataPath":  "references/identity-index-metadata.json",
+    "ccip":  {
+                 "modelDir":  "models/ccip",
+                 "bankPath":  "references/ccip-bank.json",
+                 "threads":  4
+             }
 }

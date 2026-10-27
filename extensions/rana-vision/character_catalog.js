@@ -196,12 +196,21 @@ function putCandidate(map, identity, score, reason, evidence) {
 export function resolveCanonicalIdentities(evidence, userQuestion = "") {
   const candidates = new Map();
   const texts = exactNameEvidence(evidence);
+  // A face matched in the frame outranks a name read from on-screen text: a phone's
+  // contact list or a caption can name someone who is not in the picture (LIVE22 W02).
+  const faceIds = new Set(acceptedLocalEmbeddingMatches(evidence)
+    .filter((match) => match.evidence === "ccip_face_open_set_accept")
+    .map((match) => match.id));
 
   for (const identity of identities) {
     for (const text of texts.ocr) {
       const alias = aliasMatch(text, identity);
       if (!alias) continue;
       if (!looksLikeIdentityLabel(text, alias) && !looksLikeIdentityList(text)) continue;
+      if (faceIds.size && !faceIds.has(identity.canonicalId)) {
+        putCandidate(candidates, identity, 0.5, "ocr_alias_mention_without_face", { observedText: text, matchedAlias: alias });
+        continue;
+      }
       putCandidate(candidates, identity, 0.99, "ocr_alias_match", { observedText: text, matchedAlias: alias });
     }
     for (const entry of texts.reverse) {
@@ -223,7 +232,9 @@ export function resolveCanonicalIdentities(evidence, userQuestion = "") {
     if (!identity) continue;
     putCandidate(candidates, identity, match.confidence, "local_embedding_open_set_match", {
       sidecarEvidence: match.evidence,
-      visualEvidence: "Remote CLIP sidecar accepted this identity through its open-set gate",
+      visualEvidence: match.evidence === "ccip_face_open_set_accept"
+        ? "Anime face matched labelled faces of this character (CCIP open-set gate)"
+        : "Remote CLIP sidecar accepted this identity through its open-set gate",
       confidenceLabel: match.confidenceLabel,
       instanceCount: match.instanceCount,
       targetIds: match.targetIds,

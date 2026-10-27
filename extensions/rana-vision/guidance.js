@@ -1106,6 +1106,15 @@ function sceneCharacterAddresses(ids) {
   }).filter(Boolean);
 }
 
+// Characters whose own face was matched in this image (one per accepted face identity).
+function faceIdentityIds(payload) {
+  const detected = payload?.imageUnderstanding?.detectedCharacters;
+  if (!Array.isArray(detected)) return [];
+  return [...new Set(detected.filter((item) => (item?.evidence || []).some((entry) =>
+    entry?.reason === "local_embedding_open_set_match" && entry?.sidecarEvidence === "ccip_face_open_set_accept"))
+    .map((item) => item.canonicalId).filter(Boolean))];
+}
+
 function ooggContext(evidence, userQuestion = "", suppliedPayload = null) {
   const payload = suppliedPayload || ooggPayload(evidence, userQuestion);
   const persona = payload.personaEvidence || null;
@@ -1147,8 +1156,11 @@ function ooggContext(evidence, userQuestion = "", suppliedPayload = null) {
   }
   // LIVE19D: with the names only under sceneMatch, the reply model still named
   // just resolvedSubject. Put the full answer on resolvedSubject itself.
-  const everyoneInFrame = sceneMatch && sceneMatch.characters.length > 1 && persona?.resolvedSubject?.pipelineStatus === "known"
-    ? [...sceneMatch.characters].sort((left, right) => Number(right.self) - Number(left.self)).map((item) => item.name).join("和")
+  const frameCharacters = sceneMatch && sceneMatch.characters.length > 1
+    ? sceneMatch.characters
+    : sceneCharacterAddresses(faceIdentityIds(payload));
+  const everyoneInFrame = frameCharacters.length > 1 && persona?.resolvedSubject?.pipelineStatus === "known"
+    ? [...frameCharacters].sort((left, right) => Number(right.self) - Number(left.self)).map((item) => item.name).join("和")
     : "";
   const personaForModel = everyoneInFrame
     ? { ...persona, resolvedSubject: { ...persona.resolvedSubject, everyoneInFrame } }

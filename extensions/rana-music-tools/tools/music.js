@@ -132,6 +132,19 @@ function ok(text) {
   return `嗯。${text}`;
 }
 
+// Hot-path voice replies never reach the model, so each bot needs its own wording.
+const VOICE_LINES = Object.freeze({
+  join: { rana: "嗯。進來了。", tomori: "……我、進來了。", anon: "來了來了～我進來了！", soyo: "我進來了喔。", taki: "進來了。要放什麼快說。" },
+  stop: { rana: "停下來了。", tomori: "……停下來了。", anon: "好～先停囉。", soyo: "先停下來了喔。", taki: "停了。" },
+  leave: { rana: "出去了。", tomori: "……那、我先出去了。", anon: "那我先閃囉～", soyo: "那我先離開了喔。", taki: "走了。" },
+  skip: { rana: "嗯。跳過了。", tomori: "……跳過了。", anon: "好，下一首！", soyo: "跳過了喔。", taki: "跳了。" },
+});
+
+function voiceLine(kind, route) {
+  const lines = VOICE_LINES[kind];
+  return lines[route?.botId] || lines.rana;
+}
+
 export function hasPlaybackEvidence(data) {
   if (!data || data.status === "error") return false;
   if (data.status === "extracted" && (data.message || data.llm_hint)) return false;
@@ -290,14 +303,14 @@ export async function handleControlRequest(control, event, ctx, routeText) {
       const data = await postSkip({ guild_id: DEFAULT_GUILD_ID, query: control.query, bot_id: route.botId }, undefined, route.baseUrl);
       if (data.status === "removed") return { handled: true, text: ok(`${data.removed?.title || "那首"} 拿掉了。`) };
       if (data.status === "not_found") return { handled: true, text: "找不到那首。" };
-      if (data.status === "skipped") return { handled: true, text: ok(data.current?.title ? `跳到 ${data.current.title}。` : "跳過了。") };
+      if (data.status === "skipped") return { handled: true, text: (data.current?.title ? ok(`跳到 ${data.current.title}。`) : voiceLine("skip", route)) };
       return { handled: true, text: "沒有東西能跳。" };
     }
     if (control.kind === "volume") return { handled: true, text: formatVolume(await postVolume({ guild_id: DEFAULT_GUILD_ID, volume: control.volume, delta: control.delta, bot_id: route.botId }, undefined, route.baseUrl)) };
     if (control.kind === "volume_query") return { handled: true, text: formatVolume(await getQueue(DEFAULT_GUILD_ID, undefined, route.baseUrl)) };
     if (control.kind === "stop") {
       await postStop({ guild_id: DEFAULT_GUILD_ID, bot_id: route.botId }, undefined, route.baseUrl);
-      return { handled: true, text: "停下來了。" };
+      return { handled: true, text: voiceLine("stop", route) };
     }
     if (control.kind === "join") {
       const requesterId = resolveRequesterId(event, ctx);
@@ -305,11 +318,11 @@ export async function handleControlRequest(control, event, ctx, routeText) {
       if (!requesterId) return { handled: true, text: "不行。找不到你。" };
       const data = await postJoin({ guild_id: DEFAULT_GUILD_ID, requester_id: requesterId, bot_id: route.botId, persona_id: route.personaId, account_id: route.accountId }, undefined, route.baseUrl);
       if (!recordJoinEvidence(data, event, ctx, route, requesterId)) throw new Error("voice join did not confirm joined status");
-      return { handled: true, text: ok("進來了。") };
+      return { handled: true, text: voiceLine("join", route) };
     }
     if (control.kind === "leave") {
       await postLeave({ guild_id: DEFAULT_GUILD_ID, bot_id: route.botId }, undefined, route.baseUrl);
-      return { handled: true, text: "出去了。" };
+      return { handled: true, text: voiceLine("leave", route) };
     }
   } catch (err) {
     console.warn(`[rana-music-tools] control error (${control.kind}): ${err?.message || String(err)}`);

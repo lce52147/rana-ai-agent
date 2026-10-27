@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import { mapSidecarResult, retrieveLocalIdentity, validateSidecarConfig } from "./identity_sidecar_client.js";
+import { mapFaceResult, mapSidecarResult, retrieveLocalIdentity, validateSidecarConfig, zoomInView, zoomOutView } from "./identity_sidecar_client.js";
 
 let passed = 0;
 function test(name, fn) {
@@ -164,7 +164,7 @@ await test("remote request sends bearer token and only accepted result is expose
       targets: [{ target_id: "A" }],
       requestId: "test-request",
       dependencies: {
-        config: { endpoint: `http://127.0.0.1:${port}`, apiKey: "test-key", timeoutMs: 5000, maxTargets: 3 },
+        config: { endpoint: `http://127.0.0.1:${port}`, apiKey: "test-key", timeoutMs: 5000, maxTargets: 3, faces: false },
         extractTargets: async () => [{
           target_id: "A",
           bbox: [0.1, 0.2, 0.3, 0.4],
@@ -222,7 +222,7 @@ function recordingFetch(bodies) {
   };
 }
 
-const sidecarConfig = { endpoint: "http://sidecar.test", apiKey: "k", timeoutMs: 1000, maxTargets: 3 };
+const sidecarConfig = { endpoint: "http://sidecar.test", apiKey: "k", timeoutMs: 1000, maxTargets: 3, faces: false };
 const crop = (extra) => ({ image: Buffer.from("c"), mimeType: "image/jpeg", ...extra });
 
 await test("face/upper/full views of one target go out as one parent", async () => {
@@ -273,6 +273,239 @@ await test("distinct characters are retrieved separately and merged", async () =
   assert.equal(result.targets.length, 2);
   assert.equal(result.aggregate_decision, null);
   assert.equal(result.primary.id, "rana");
+});
+
+const face = (id, accepted, extra = {}) => ({
+  face_id: id,
+  box: [0, 0, 10, 10],
+  bbox: [0, 0, 0.1, 0.1],
+  score: 0.9,
+  decision: { accepted, id: extra.who || "rana", distance: 0.03, margin: 0.1, reasons: accepted ? [] : ["distance_above_threshold"] },
+});
+
+await test("accepted faces become one identity each, biggest face first", () => {
+  const mapped = mapFaceResult({ status: "ok", faces: [face("F1", true, { who: "taki" }), face("F2", true), face("F3", false)] });
+  assert.deepEqual(mapped.accepted.map((item) => item.id), ["taki", "rana"]);
+  assert.equal(mapped.primary.id, "taki");
+  assert.equal(mapped.accepted[0].evidence, "ccip_face_open_set_accept");
+  assert.equal(mapped.accepted[0].confidence, "high");
+  assert.equal(mapped.rejected_count, 1);
+});
+
+function facesFetch(calls, facesResponse) {
+  return async (url, init) => {
+    calls.push(url);
+    if (url.endsWith("/v1/identity/faces")) return facesResponse();
+    return recordingFetch([])(url, init);
+  };
+}
+const faceConfig = { ...sidecarConfig, faces: true };
+const twoTargets = async () => [crop({ target_id: "T1", type: "screen_character" }), crop({ target_id: "T2", type: "screen_character" })];
+
+await test("face endpoint answers first and skips the CLIP crops", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ status: "ok", faces: [face("F1", true, { who: "umiri" })] }))),
+      extractTargets: async () => { throw new Error("crops must not run when a face was found"); },
+    },
+  });
+  assert.deepEqual(calls, ["http://sidecar.test/v1/identity/faces"]);
+  assert.equal(result.source, "ccip_face_sidecar");
+  assert.equal(result.primary.id, "umiri");
+});
+
+await test("a found but unknown face stays unknown", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ status: "ok", faces: [face("F1", false)] }))),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(result.accepted.length, 0);
+  assert.equal(result.primary, null);
+});
+
+await test("old sidecar without the face route falls back to CLIP retrieve", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ error: "not_found" }), { status: 404 })),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls[0], "http://sidecar.test/v1/identity/faces");
+  assert.equal(calls.filter((url) => url.endsWith("/v1/identity/retrieve")).length, 2);
+  assert.equal(result.primary.id, "rana");
+});
+
+await test("no face found falls back to CLIP retrieve", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ status: "ok", faces: [] }))),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls.filter((url) => url.endsWith("/v1/identity/retrieve")).length, 2);
+  assert.equal(result.primary.id, "rana");
+});
+
+await test("an accepted whole-frame match answers without CLIP", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ status: "ok", faces: [{
+        face_id: "W1", kind: "whole_frame", box: [0, 0, 10, 10], bbox: [0, 0, 1, 1], score: null,
+        decision: { accepted: true, id: "soyo", distance: 0.03, margin: 0.1, reasons: [] },
+      }] }))),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls.filter((url) => url.endsWith("/v1/identity/retrieve")).length, 0);
+  assert.equal(result.primary.id, "soyo");
+  assert.equal(result.primary.instances[0].type, "whole_frame");
+});
+
+await test("a rejected whole-frame match still falls back to CLIP retrieve", async () => {
+  const calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      fetch: facesFetch(calls, () => new Response(JSON.stringify({ status: "ok", faces: [{
+        face_id: "W1", kind: "whole_frame", box: [0, 0, 10, 10], bbox: [0, 0, 1, 1], score: null,
+        decision: { accepted: false, id: "soyo", distance: 0.2, margin: 0.01, reasons: ["distance_above_threshold"] },
+      }] }))),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls.filter((url) => url.endsWith("/v1/identity/retrieve")).length, 2);
+  assert.equal(result.primary.id, "rana");
+});
+
+// Zoom retry: the first /faces call answers the frame, later calls answer the zoomed views.
+function sequenceFetch(calls, bodies) {
+  return async (url) => {
+    calls.push(url);
+    return new Response(JSON.stringify(bodies[Math.min(calls.length - 1, bodies.length - 1)]));
+  };
+}
+const zoomViews = [];
+const fakeZoom = async (image, view) => { zoomViews.push(view); return Buffer.from("zoomed"); };
+const frame = (faces) => ({ status: "ok", image: { width: 1280, height: 720 }, faces });
+const boxed = (id, accepted, box, who = "umiri", reasons = accepted ? [] : ["distance_above_threshold"]) => ({
+  face_id: id, kind: "face", box, bbox: null, score: 0.9,
+  decision: { accepted, id: who, distance: accepted ? 0.05 : 0.12, margin: 0.1, reasons },
+});
+const wholeFrame = (accepted, who = "uika") => ({
+  face_id: "W1", kind: "whole_frame", box: [0, 0, 1280, 720], bbox: [0, 0, 1, 1], score: null,
+  decision: { accepted, id: who, distance: accepted ? 0.03 : 0.05, margin: 0.1, reasons: accepted ? [] : ["distance_above_threshold"] },
+});
+
+await test("zoom views map back to the original frame", () => {
+  const view = zoomInView([100, 100, 200, 200], 1280, 720);
+  assert.deepEqual(view.box, [25, 25, 275, 275]);
+  assert.deepEqual(view.toOriginal([288, 288, 672, 672]).map(Math.round), [100, 100, 200, 200]);
+  assert.deepEqual(zoomOutView(0.6, 1280, 720), { kind: "out", scale: 0.6, size: [1280, 720], inner: [768, 432], offset: [256, 144] });
+});
+
+await test("an unnamed face is named when the zoomed view passes the gate over the same spot", async () => {
+  const calls = [];
+  zoomViews.length = 0;
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      zoomImage: fakeZoom,
+      fetch: sequenceFetch(calls, [
+        frame([boxed("F1", true, [700, 100, 900, 300], "taki"), boxed("F2", false, [100, 100, 200, 200])]),
+        // zoom window [25,25,275,275] scaled 960/250: the face sits at 288..672
+        frame([boxed("F1", true, [288, 288, 672, 672], "umiri")]),
+      ]),
+      extractTargets: async () => { throw new Error("crops must not run when a face was found"); },
+    },
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(zoomViews[0].kind, "in");
+  assert.deepEqual(result.accepted.map((item) => item.id), ["taki", "umiri"]);
+  assert.equal(result.accepted[1].evidence, "ccip_face_open_set_accept");
+  assert.equal(result.accepted[1].instances[0].zoom, "in");
+});
+
+await test("a zoomed name elsewhere in the window, or a still-rejected zoom, keeps the face unknown", async () => {
+  for (const zoomedFaces of [[boxed("F1", true, [0, 0, 100, 100], "soyo")], [boxed("F1", false, [288, 288, 672, 672])]]) {
+    const calls = [];
+    const result = await retrieveLocalIdentity({
+      image: Buffer.from("x"),
+      mimeType: "image/png",
+      dependencies: { config: faceConfig, zoomImage: fakeZoom, fetch: sequenceFetch(calls, [frame([boxed("F1", false, [100, 100, 200, 200])]), frame(zoomedFaces)]), extractTargets: twoTargets },
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(result.accepted.length, 0);
+  }
+});
+
+await test("a close-up with no face is zoomed out and named only by the gate", async () => {
+  const calls = [];
+  zoomViews.length = 0;
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      zoomImage: fakeZoom,
+      fetch: sequenceFetch(calls, [frame([wholeFrame(false)]), frame([]), frame([boxed("F1", true, [500, 250, 780, 470], "uika")])]),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.deepEqual(zoomViews.map((view) => view.scale), [0.6, 0.4]);
+  assert.equal(calls.filter((url) => url.endsWith("/v1/identity/retrieve")).length, 0);
+  assert.equal(result.primary.id, "uika");
+  assert.equal(result.primary.instances[0].type, "whole_frame");
+  assert.equal(result.primary.instances[0].zoom, "out:0.4");
+});
+
+await test("zoom retry can be turned off, and a failed zoom changes nothing", async () => {
+  let calls = [];
+  await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: { config: { ...faceConfig, zoomRetry: false }, zoomImage: fakeZoom, fetch: sequenceFetch(calls, [frame([boxed("F1", false, [100, 100, 200, 200])])]), extractTargets: twoTargets },
+  });
+  assert.equal(calls.length, 1);
+  calls = [];
+  const result = await retrieveLocalIdentity({
+    image: Buffer.from("x"),
+    mimeType: "image/png",
+    dependencies: {
+      config: faceConfig,
+      zoomImage: async () => { throw new Error("ffmpeg missing"); },
+      fetch: sequenceFetch(calls, [frame([boxed("F1", false, [100, 100, 200, 200])])]),
+      extractTargets: twoTargets,
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(result.accepted.length, 0);
 });
 
 console.log(`identity sidecar client tests: ${passed}/${passed} passed`);

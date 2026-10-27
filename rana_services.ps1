@@ -31,8 +31,12 @@ $PAUSE_ALL = Join-Path $ROOT 'watchdog.pause'
 $RESTART_API = 'D:\_Project\LoLCoachBench\lolcoach\scripts\restart_api.ps1'
 $PATCH_PENDING = 'D:\_Project\LoLCoachBench\lolcoach\data\patch_pending.json'
 
-$env:RANA_VISION_BASE_URL = 'http://192.168.50.3:6970'
-$env:RANA_VISION_FALLBACK_BASE_URL = 'http://100.99.83.84:6970'
+# Vision host addresses live in hosts.local.json (gitignored); see hosts.example.json.
+$hostsFile = Join-Path $ROOT 'hosts.local.json'
+if (-not (Test-Path -LiteralPath $hostsFile)) { $hostsFile = Join-Path $ROOT 'hosts.example.json' }
+$localHosts = Get-Content -LiteralPath $hostsFile -Encoding UTF8 -Raw | ConvertFrom-Json
+if (-not $env:RANA_VISION_BASE_URL) { $env:RANA_VISION_BASE_URL = [string]$localHosts.visionBaseUrl }
+if (-not $env:RANA_VISION_FALLBACK_BASE_URL) { $env:RANA_VISION_FALLBACK_BASE_URL = [string]$localHosts.visionFallbackBaseUrl }
 if (-not $env:RANA_VISION_DEBUG) { $env:RANA_VISION_DEBUG = '0' }
 
 function Test-Port([int]$Port) {

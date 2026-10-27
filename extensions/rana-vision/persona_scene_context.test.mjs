@@ -55,3 +55,31 @@ test("persona context has no scene block without an accepted scene match", () =>
   const context = guidanceTest.ooggContext(evidence, "這是誰？", payload);
   assert.doesNotMatch(context, /sceneMatch/u);
 });
+
+test("persona context names everyone whose face was matched when there is no scene match", async () => {
+  const { mapFaceResult } = await import("./identity_sidecar_client.js");
+  const { resolveImageCharacters } = await import("./character_catalog.js");
+  const face = (faceId, id) => ({ face_id: faceId, bbox: [0, 0, 0.1, 0.1], score: 0.9, decision: { accepted: true, id, distance: 0.03, margin: 0.1 } });
+  const evidence = unknownIdentityEvidence({ status: "ok", accepted: false, tier: null, match: null });
+  evidence.local_identity_retrieval = mapFaceResult({ status: "ok", faces: [face("F1", "umiri"), face("F2", "rana")] });
+  evidence.identity_resolution = resolveImageCharacters(evidence, "這是誰？");
+  assert.deepEqual(evidence.identity_resolution.detectedCharacters.map((item) => item.canonicalId).sort(), ["rana", "umiri"]);
+  const payload = guidanceTest.ooggPayload(evidence, "這是誰？");
+  payload.personaEvidence = { queryPlan: { intent: "identity" }, resolvedSubject: { pipelineStatus: "known" } };
+  const context = guidanceTest.ooggContext(evidence, "這是誰？", payload);
+  const json = JSON.parse(context.slice(context.indexOf("{\"userQuestion\"")));
+  assert.match(json.personaEvidence.resolvedSubject.everyoneInFrame, /^我和.+/u);
+  assert.match(context, /不要只說一個/u);
+});
+
+test("a single matched face does not add everyoneInFrame", async () => {
+  const { mapFaceResult } = await import("./identity_sidecar_client.js");
+  const { resolveImageCharacters } = await import("./character_catalog.js");
+  const evidence = unknownIdentityEvidence({ status: "ok", accepted: false, tier: null, match: null });
+  evidence.local_identity_retrieval = mapFaceResult({ status: "ok", faces: [{ face_id: "F1", decision: { accepted: true, id: "sakiko", distance: 0.02, margin: 0.2 } }] });
+  evidence.identity_resolution = resolveImageCharacters(evidence, "這是誰？");
+  const payload = guidanceTest.ooggPayload(evidence, "這是誰？");
+  payload.personaEvidence = { queryPlan: { intent: "identity" }, resolvedSubject: { pipelineStatus: "known" } };
+  const context = guidanceTest.ooggContext(evidence, "這是誰？", payload);
+  assert.doesNotMatch(context, /everyoneInFrame/u);
+});

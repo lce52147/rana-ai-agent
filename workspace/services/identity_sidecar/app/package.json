@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node unit.test.mjs && node contract.test.mjs"
+    "test": "node unit.test.mjs && node contract.test.mjs && node ccip.unit.test.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.7.2"

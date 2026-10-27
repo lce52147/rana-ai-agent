@@ -250,7 +250,7 @@ export async function retrieveTurnContext({ personaId, query, priorText = "", se
   const config = retrievalConfig();
   const roleRequested = ROLE_QUERY_RE.test(text);
   const roleScoped = roleRequested
-    ? candidateScope.filter((item) => /(?:角色|樂團|乐团|主唱|鼓手|貝斯手|贝斯手|吉他|鍵盤|键盘|團長|队长)/u.test(`${item.title}\n${item.content}`))
+    ? candidateScope.filter((item) => item.kind === "memory" || /(?:角色|樂團|乐团|主唱|鼓手|貝斯手|贝斯手|吉他|鍵盤|键盘|團長|队长)/u.test(`${item.title}\n${item.content}`))
     : [];
   const roleQuery = roleRequested
     ? "角色 樂團 樂隊 成員 主唱 鼓手 貝斯手"

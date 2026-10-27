@@ -1,0 +1,5 @@
+{
+  "_comment": "Example hosts for fresh clones and tests. Copy to hosts.local.json (gitignored) and fill in the addresses of your own machines.",
+  "visionBaseUrl": "http://127.0.0.1:6970",
+  "visionFallbackBaseUrl": ""
+}

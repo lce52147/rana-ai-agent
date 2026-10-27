@@ -194,6 +194,62 @@ test("pipeline: exact labeled scene locks identity locally and reaches the paylo
   assert.equal(payload.imageUnderstanding.sceneMatch.confidence, "high");
 });
 
+function faceAccepted(id) {
+  return async () => ({
+    status: "ok",
+    source: "ccip_face_sidecar",
+    primary: null,
+    targets: [],
+    accepted: [{ id, confidence: "high", confidence_score: 0.94, evidence: "ccip_face_open_set_accept", instance_count: 1, target_ids: ["F1"] }],
+  });
+}
+
+const likelyUmiri = {
+  status: "ok",
+  accepted: true,
+  tier: "likely",
+  similarity: 0.889,
+  hub_lead: 0.08,
+  match: { series: "ave-mujica", line: "海玲咬牙", wordless: true, scene: "s", path: "p", labels: ["umiri"], similarity: 0.889 },
+  shot_lines: [],
+};
+
+test("pipeline: a likely scene whose people the matched face contradicts is dropped (LIVE22 W10)", async () => {
+  const counter = { calls: 0 };
+  const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-face-conflict", {
+    ...pipeline(likelyUmiri, counter),
+    localIdentity: faceAccepted("mutsumi"),
+  });
+  assert.equal(result.final_identity.canonicalId, "mutsumi");
+  assert.equal(result.scene_lookup.accepted, false);
+  assert.equal(result.scene_lookup.reason, "face_identity_conflict");
+  assert.equal(result.standardized.scene_match, null);
+  assert.equal(ooggPayload(result, "這是誰").imageUnderstanding.sceneMatch, null);
+});
+
+test("pipeline: a likely scene that agrees with the matched face is kept", async () => {
+  const counter = { calls: 0 };
+  const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-face-agree", {
+    ...pipeline(likelyUmiri, counter),
+    localIdentity: faceAccepted("umiri"),
+  });
+  assert.equal(result.scene_lookup.accepted, true);
+  assert.equal(result.standardized.scene_match.tier, "likely");
+});
+
+test("pipeline: a likely scene may not add people the faces did not confirm (LIVE24 V01)", async () => {
+  const counter = { calls: 0 };
+  const twoPeople = { ...likelyUmiri, match: { ...likelyUmiri.match, line: "小祥與小睦拍手", labels: ["mutsumi", "sakiko"] } };
+  const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-face-partial", {
+    ...pipeline(twoPeople, counter),
+    localIdentity: faceAccepted("mutsumi"),
+  });
+  assert.equal(result.final_identity.canonicalId, "mutsumi");
+  assert.equal(result.scene_lookup.accepted, false);
+  assert.equal(result.scene_lookup.reason, "face_identity_partial");
+  assert.deepEqual(result.identity_resolution.detectedCharacters.map((c) => c.canonicalId), ["mutsumi"]);
+});
+
 test("pipeline: unavailable scene lookup changes nothing", async () => {
   const counter = { calls: 0 };
   const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-down", pipeline({

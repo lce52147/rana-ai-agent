@@ -328,6 +328,22 @@ function removeCanonicalIdentity(resolution, canonicalId) {
   }
 }
 
+// A "likely" scene match (edited or cropped copy) is a near frame, not the same one: new images from
+// the same anime land on it too (LIVE22: 4 of 10 web images, one naming 海鈴 for Mutsumi). When the
+// matched faces name none of that frame's people, the frame is a different shot; drop its line and names.
+// Same when the faces confirm only some of them (LIVE24 V01: 睦 + Mortis doll hit 「小祥與小睦拍手」 and the
+// frame's labels added 祥子): a near frame may only repeat names the faces already gave.
+function sceneAgreeingWithFaces(scene, localIdentityRetrieval) {
+  if (scene?.accepted !== true || scene.tier === "exact") return scene;
+  const faceIds = new Set((localIdentityRetrieval?.accepted || [])
+    .filter((item) => item?.evidence === "ccip_face_open_set_accept")
+    .map((item) => String(item?.id || "")));
+  const labels = Array.isArray(scene.match?.labels) ? scene.match.labels : [];
+  if (!faceIds.size || !labels.length || labels.every((id) => faceIds.has(id))) return scene;
+  const reason = labels.some((id) => faceIds.has(id)) ? "face_identity_partial" : "face_identity_conflict";
+  return { ...scene, accepted: false, tier: null, reason, rejected_match: scene.match, match: null };
+}
+
 function evaluateReverseEvidence(reverse, vision, localOcr) {
   const ocr = ocrEvidence(vision, localOcr);
   const ocrTerms = ocrIdentityTerms(ocr);
@@ -660,7 +676,7 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
     error: reverse?.error || null,
   }, { force: true });
 
-  const scene = resolveSceneLine(sceneRaw, ocr);
+  const sceneLine = resolveSceneLine(sceneRaw, ocr);
   const gate = evaluateReverseEvidence(reverse, vision, ocr);
   const workGate = workConfidenceGate(reverse);
   await trace(requestId, "work_confidence_gate", {
@@ -677,6 +693,7 @@ async function buildVisionEvidenceInternal(loadImage, prompt, signal, requestId,
     requestId,
     dependencies: dependencies.localIdentityDependencies || {},
   });
+  const scene = sceneAgreeingWithFaces(sceneLine, localIdentityRetrieval);
   await trace(requestId, "identity_resolver_input", {
     vision_status: vision?.status || "unknown",
     vision_targets: Array.isArray(vision?.observation?.targets)

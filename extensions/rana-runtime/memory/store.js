@@ -59,12 +59,21 @@ function dbHandle() {
     CREATE INDEX IF NOT EXISTS memories_active_idx ON memories(bot_id, superseded_by, ts DESC);
     CREATE INDEX IF NOT EXISTS memories_subject_idx ON memories(bot_id, subject, ts DESC);
   `);
+  // author_id = who taught the memory; user_id = whose memory it is (NULL = shared with everyone).
+  if (!db.prepare("PRAGMA table_info(memories)").all().some((column) => column.name === "author_id")) {
+    db.exec("ALTER TABLE memories ADD COLUMN author_id TEXT; UPDATE memories SET author_id = user_id WHERE author_id IS NULL;");
+  }
   return db;
 }
 
 export function isSensitiveMemoryText(value) {
   const text = normalizeText(value);
   return SENSITIVE_RE.test(text) || SENSITIVE_CJK_RE.test(text) || TOKEN_SHAPE_RE.test(text);
+}
+
+// A memory about the speaker themself (「我喜歡…」「我的生日…」) stays theirs; anything else is shared.
+export function isSelfMemoryText(value) {
+  return /我(?!們|们)|本人|\b(?:I|my|me)\b/iu.test(normalizeText(value));
 }
 
 export function isTransientMemoryText(value) {
@@ -75,6 +84,7 @@ export function isTransientMemoryText(value) {
 function validateInput(input = {}) {
   const botId = normalizeText(input.bot_id || input.botId).toLowerCase();
   const userId = normalizeText(input.user_id || input.userId) || null;
+  const authorId = normalizeText(input.author_id || input.authorId) || userId;
   const kind = normalizeText(input.kind) || "fact";
   const subject = normalizeText(input.subject);
   const content = normalizeText(input.content || input.text);
@@ -83,7 +93,7 @@ function validateInput(input = {}) {
   if (!["fact", "preference", "identity", "commitment", "correction"].includes(kind)) return { ok: false, reason: "invalid_kind" };
   if (!["inferred", "explicit", "migrated"].includes(source)) return { ok: false, reason: "invalid_source" };
   if (isSensitiveMemoryText(content) || isTransientMemoryText(content)) return { ok: false, reason: "filtered_content" };
-  return { ok: true, botId, userId, kind, subject, content, source, confidence: Math.max(0, Math.min(1, Number(input.confidence ?? 0.5))), sourceMessageId: normalizeText(input.source_message_id || input.sourceMessageId) || null, embeddingHash: normalizeText(input.embedding_hash || input.embeddingHash) || null, supersedesId: normalizeText(input.supersedes_by || input.supersedesBy) || null };
+  return { ok: true, botId, userId, authorId, kind, subject, content, source, confidence: Math.max(0, Math.min(1, Number(input.confidence ?? 0.5))), sourceMessageId: normalizeText(input.source_message_id || input.sourceMessageId) || null, embeddingHash: normalizeText(input.embedding_hash || input.embeddingHash) || null, supersedesId: normalizeText(input.supersedes_by || input.supersedesBy) || null };
 }
 
 function existingExact(value) {
@@ -104,7 +114,7 @@ export function insertMemory(input = {}) {
   if (duplicate) return { ok: true, inserted: false, duplicate: true, item: duplicate };
   const id = crypto.randomUUID();
   const database = dbHandle();
-  database.prepare("INSERT INTO memories (id, bot_id, user_id, kind, subject, content, ts, source_message_id, source, confidence, superseded_by, embedding_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)").run(id, value.botId, value.userId, value.kind, value.subject, value.content, Number(input.ts || nowMs()), value.sourceMessageId, value.source, value.confidence, value.embeddingHash);
+  database.prepare("INSERT INTO memories (id, bot_id, user_id, author_id, kind, subject, content, ts, source_message_id, source, confidence, superseded_by, embedding_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)").run(id, value.botId, value.userId, value.authorId, value.kind, value.subject, value.content, Number(input.ts || nowMs()), value.sourceMessageId, value.source, value.confidence, value.embeddingHash);
   if (value.supersedesId) markSuperseded(value.supersedesId, id);
   if (value.kind === "correction" && value.subject) {
     const previous = database.prepare("SELECT id FROM memories WHERE bot_id = ? AND ((user_id IS NULL AND ? IS NULL) OR user_id = ?) AND subject = ? AND id <> ? AND superseded_by IS NULL ORDER BY ts DESC LIMIT 1").get(value.botId, value.userId, value.userId, value.subject, id);

@@ -43,7 +43,7 @@ test("ToriiGate compact schema accepts three 0-1000 targets", () => {
   assert.equal(parsed.targets.length, 3);
   assert.equal(parsed.targets.every((item) => item.bbox.every((value) => value >= 0 && value <= 1)), true);
   const schema = client.visionResponseFormat().json_schema.schema;
-  assert.deepEqual(schema.required, ["m", "x", "t", "s"]);
+  assert.deepEqual(schema.required, ["m", "x", "t", "s", "z"]);
   assert.equal(schema.properties.t.maxItems, 3);
   assert.equal(schema.properties.t.items.properties.b.items.maximum, 1000);
 });

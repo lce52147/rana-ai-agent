@@ -14,12 +14,15 @@
 !/start LIVE.cmd
 !/START_OOGG.cmd
 !/discord_ids.example.json
+!/hosts.example.json
+!/README.md
 
 # ---- never track, even inside allowed directories ----
 # credentials, device identity, per-device state
 openclaw.json
 openclaw.json.*
 **/discord_ids.local.json
+**/hosts.local.json
 identity/
 devices/
 **/auth-profiles*

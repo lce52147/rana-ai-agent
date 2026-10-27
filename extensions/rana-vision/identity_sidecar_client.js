@@ -1,6 +1,9 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { traceVision } from "./debug.js";
 
@@ -27,7 +30,13 @@ export function validateSidecarConfig(value) {
   if (!apiKey) throw new Error("identity sidecar apiKey is missing");
   const timeoutMs = Math.max(1000, Math.min(120000, Number(config.timeoutMs || 30000)));
   const maxTargets = Math.max(1, Math.min(MAX_TARGETS, Number(config.maxTargets || MAX_TARGETS)));
-  return { endpoint, apiKey, timeoutMs, maxTargets };
+  // Whole-image anime face identity (/v1/identity/faces); older sidecars answer 404/501 and fall back.
+  const faces = config.faces !== false;
+  // Look again when the face route names nobody: zoom into each unnamed face, or zoom out of a
+  // frame with no face (an extreme close-up has a face bigger than the frame). The sidecar's own
+  // gate still decides every name. Blind tiers s3301+s5501: B-tier unknown 9 -> 3, wrong 1 -> 1.
+  const zoomRetry = config.zoomRetry !== false;
+  return { endpoint, apiKey, timeoutMs, maxTargets, faces, zoomRetry };
 }
 
 export async function loadSidecarConfig(dependencies = {}) {
@@ -183,6 +192,187 @@ export function mapSidecarResult(result) {
   };
 }
 
+// /v1/identity/faces returns one open-set decision per detected face, biggest face first.
+export function mapFaceResult(result) {
+  const faces = Array.isArray(result?.faces) ? result.faces : [];
+  const groups = new Map();
+  for (const face of faces) {
+    const id = String(face?.decision?.id || "").trim();
+    if (face?.decision?.accepted !== true || !id) continue;
+    const group = groups.get(id) || { id, instances: [] };
+    group.instances.push({
+      target_id: String(face.face_id || ""),
+      bbox: face.bbox || null,
+      type: face.kind === "whole_frame" ? "whole_frame" : "face",
+      score: Number(face.score || 0),
+      distance: Number(face.decision.distance),
+      margin: Number(face.decision.margin),
+      zoom: face.decision.zoom || null,
+    });
+    groups.set(id, group);
+  }
+  const accepted = [...groups.values()].map((group) => ({
+    id: group.id,
+    confidence: "high",
+    confidence_score: 0.94,
+    evidence: "ccip_face_open_set_accept",
+    instance_count: group.instances.length,
+    target_ids: group.instances.map((item) => item.target_id).filter(Boolean),
+    instances: group.instances,
+  }));
+  return {
+    status: String(result?.status || "ok"),
+    source: String(result?.source || "ccip_face_sidecar"),
+    model: result?.model || null,
+    bank: result?.bank || null,
+    elapsed_ms: Number(result?.elapsed_ms || 0),
+    target_count: faces.length,
+    accepted,
+    primary: accepted[0] || null,
+    targets: faces,
+    aggregate_decision: null,
+    aggregate_conflict: false,
+    rejected_count: faces.filter((face) => face?.decision?.accepted !== true).length,
+  };
+}
+
+async function postFaces({ image, mimeType, config, fetchImpl, signal, requestId, startedAt, view = "frame" }) {
+  const endpoint = `${config.endpoint}/v1/identity/faces`;
+  const deadline = createDeadline(signal, config.timeoutMs);
+  try {
+    const response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ request_id: requestId || "", mime_type: mimeType || "image/jpeg", data_base64: image.toString("base64") }),
+      signal: deadline.signal,
+    });
+    const parsed = await response.json().catch(() => ({}));
+    await traceVision(requestId, "identity_faces_response", {
+      endpoint,
+      view,
+      http_status: response.status,
+      ok: response.ok,
+      body: sanitizeSidecarTrace(parsed),
+      elapsed_ms: Date.now() - startedAt,
+    });
+    return response.ok ? parsed : null;
+  } catch (error) {
+    await traceVision(requestId, "identity_faces_unavailable", { endpoint, view, error: String(error?.message || error) }).catch(() => {});
+    return null;
+  } finally {
+    deadline.close();
+  }
+}
+
+const ZOOM_EDGE = 960;
+const ZOOM_OUT_SCALES = [0.6, 0.4];
+const MAX_ZOOM_FACES = 3;
+const execFileAsync = promisify(execFile);
+
+// view.kind "in": crop view.box (pixels) and scale its long edge to ZOOM_EDGE.
+// view.kind "out": shrink the frame by view.scale onto a grey canvas of the original size.
+async function ffmpegZoom(image, view) {
+  const inputPath = path.join(tmpdir(), `rana-vision-zoom-src-${randomUUID()}`);
+  const outputPath = path.join(tmpdir(), `rana-vision-zoom-${randomUUID()}.jpg`);
+  const filter = view.kind === "in"
+    ? `crop=${view.box[2] - view.box[0]}:${view.box[3] - view.box[1]}:${view.box[0]}:${view.box[1]},`
+      + `scale=${ZOOM_EDGE}:${ZOOM_EDGE}:force_original_aspect_ratio=decrease:flags=lanczos`
+    : `scale=${view.inner[0]}:${view.inner[1]}:flags=lanczos,`
+      + `pad=${view.size[0]}:${view.size[1]}:${view.offset[0]}:${view.offset[1]}:color=0x808080`;
+  await writeFile(inputPath, image);
+  try {
+    await execFileAsync("ffmpeg", ["-v", "error", "-y", "-i", inputPath, "-vf", filter, "-frames:v", "1", "-q:v", "2", outputPath], { windowsHide: true });
+    return await readFile(outputPath);
+  } finally {
+    await unlink(inputPath).catch(() => {});
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
+function boxIou(a, b) {
+  const w = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const h = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const union = ((a[2] - a[0]) * (a[3] - a[1])) + ((b[2] - b[0]) * (b[3] - b[1])) - (w * h);
+  return union > 0 ? (w * h) / union : 0;
+}
+
+export function zoomInView(box, width, height) {
+  const side = Math.max(box[2] - box[0], box[3] - box[1]) * 1.25;
+  const cx = (box[0] + box[2]) / 2;
+  const cy = (box[1] + box[3]) / 2;
+  const crop = [
+    Math.max(0, Math.trunc(cx - side)), Math.max(0, Math.trunc(cy - side)),
+    Math.min(width, Math.trunc(cx + side)), Math.min(height, Math.trunc(cy + side)),
+  ];
+  const k = ZOOM_EDGE / Math.max(crop[2] - crop[0], crop[3] - crop[1]);
+  return { kind: "in", box: crop, toOriginal: (b) => [crop[0] + (b[0] / k), crop[1] + (b[1] / k), crop[0] + (b[2] / k), crop[1] + (b[3] / k)] };
+}
+
+export function zoomOutView(scale, width, height) {
+  const inner = [Math.max(2, Math.round(width * scale)), Math.max(2, Math.round(height * scale))];
+  const offset = [Math.trunc((width - inner[0]) / 2), Math.trunc((height - inner[1]) / 2)];
+  return { kind: "out", scale, size: [width, height], inner, offset };
+}
+
+function acceptedFaces(result) {
+  return (Array.isArray(result?.faces) ? result.faces : [])
+    .filter((face) => face?.kind !== "whole_frame" && face?.decision?.accepted === true && face.decision.id);
+}
+
+// Returns the face list with zoom-confirmed names filled in; never changes an accepted face.
+export async function applyZoomRetry(result, { image, mimeType, config, fetchImpl, signal, requestId, startedAt, zoomImage = ffmpegZoom }) {
+  const faces = Array.isArray(result?.faces) ? result.faces : [];
+  const width = Number(result?.image?.width);
+  const height = Number(result?.image?.height);
+  if (!config.zoomRetry || !faces.length || !(width > 0 && height > 0)) return result;
+  const ask = async (view, label) => {
+    try {
+      const zoomed = await zoomImage(image, view);
+      return await postFaces({ image: zoomed, mimeType: "image/jpeg", config, fetchImpl, signal, requestId, startedAt, view: label });
+    } catch (error) {
+      await traceVision(requestId, "identity_zoom_failed", { view: label, error: String(error?.message || error) }).catch(() => {});
+      return null;
+    }
+  };
+  const next = faces.map((face) => ({ ...face }));
+  const realFaces = next.filter((face) => face.kind !== "whole_frame");
+  if (realFaces.length) {
+    for (const face of realFaces.filter((item) => item?.decision?.accepted !== true && Array.isArray(item.box)).slice(0, MAX_ZOOM_FACES)) {
+      const view = zoomInView(face.box, width, height);
+      const zoomed = await ask(view, `in:${face.face_id}`);
+      const ids = new Set(acceptedFaces(zoomed)
+        .filter((hit) => Array.isArray(hit.box) && boxIou(view.toOriginal(hit.box), face.box) > 0.4)
+        .map((hit) => hit.decision.id));
+      if (ids.size !== 1) continue;
+      const hit = acceptedFaces(zoomed).find((item) => ids.has(item.decision.id));
+      face.decision = { ...hit.decision, reasons: [], zoom: "in", base_decision: face.decision };
+    }
+  } else {
+    const whole = next.find((face) => face.kind === "whole_frame");
+    if (whole && whole.decision?.accepted !== true) {
+      for (const scale of ZOOM_OUT_SCALES) {
+        const zoomed = await ask(zoomOutView(scale, width, height), `out:${scale}`);
+        const ids = new Set(acceptedFaces(zoomed).map((hit) => hit.decision.id));
+        if (ids.size !== 1) continue;
+        const hit = acceptedFaces(zoomed)[0];
+        whole.decision = { ...hit.decision, reasons: [], zoom: `out:${scale}`, base_decision: whole.decision };
+        break;
+      }
+    }
+  }
+  const changed = next.filter((face, i) => face.decision !== faces[i].decision)
+    .map((face) => ({ face_id: face.face_id, id: face.decision.id, distance: face.decision.distance, zoom: face.decision.zoom }));
+  await traceVision(requestId, "identity_zoom_retry", { changed, elapsed_ms: Date.now() - startedAt }).catch(() => {});
+  return { ...result, faces: next };
+}
+
+async function retrieveFaceIdentity({ image, mimeType, config, fetchImpl, signal, requestId, startedAt, zoomImage }) {
+  const parsed = await postFaces({ image, mimeType, config, fetchImpl, signal, requestId, startedAt });
+  if (!parsed) return null;
+  const looked = await applyZoomRetry(parsed, { image, mimeType, config, fetchImpl, signal, requestId, startedAt, zoomImage });
+  return mapFaceResult(looked);
+}
+
 // The sidecar aggregates views of ONE target per request and rejects a request
 // whose images name more than one parent. Face/upper/full views (F1-F3) share
 // their source target, or the whole image for the fallback views.
@@ -261,8 +451,26 @@ export async function retrieveLocalIdentity({ image, mimeType, targets = [], sig
   const startedAt = Date.now();
   try {
     const config = await loadSidecarConfig(dependencies);
-    const cropper = dependencies.extractTargets || (await import("./client.js")).extractVisionTargets;
     const fetchImpl = dependencies.fetch || fetch;
+    if (config.faces) {
+      const faceResult = await retrieveFaceIdentity({ image, mimeType, config, fetchImpl, signal, requestId, startedAt, zoomImage: dependencies.zoomImage });
+      // No face found (plush, photo, object) and no whole-frame match: fall through to the CLIP target crops.
+      const faceFound = faceResult?.targets?.some((face) => face?.kind !== "whole_frame");
+      if (faceResult && (faceFound || faceResult.accepted.length)) {
+        faceResult.round_trip_ms = Date.now() - startedAt;
+        await traceVision(requestId, "identity_sidecar_result", {
+          status: faceResult.status,
+          source: faceResult.source,
+          target_count: faceResult.target_count,
+          accepted: faceResult.accepted,
+          rejected_count: faceResult.rejected_count,
+          sidecar_elapsed_ms: faceResult.elapsed_ms,
+          round_trip_ms: faceResult.round_trip_ms,
+        }, { force: true });
+        return faceResult;
+      }
+    }
+    const cropper = dependencies.extractTargets || (await import("./client.js")).extractVisionTargets;
     const crops = (await cropper(image, mimeType, targets)).slice(0, config.maxTargets);
     const cropSummaries = crops.map(summarizeCrop);
     await traceVision(requestId, "identity_crop_batch", {
@@ -364,6 +572,7 @@ export const __test = {
   confidenceForAggregate,
   confidenceForDecision,
   mapSidecarResult,
+  mapFaceResult,
   normalizeEndpoint,
   sanitizeSidecarTrace,
   summarizeCrop,

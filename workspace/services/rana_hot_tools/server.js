@@ -74,7 +74,9 @@ async function sharedMemoryRecall(payload, query) {
 async function sharedMemoryRemember(payload, text) {
   const store = await sharedMemoryStore();
   if (!store) return null;
-  return store.insertMemory({ bot_id: payload.bot_id || payload.botId || payload.persona_id || payload.personaId, user_id: memoryUserId(payload), kind: payload.kind || "fact", subject: payload.subject || "", content: text, source: payload.source || "explicit", source_message_id: payload.source_message_id || payload.message_id || null, confidence: payload.confidence ?? 1 });
+  const author = memoryUserId(payload);
+  const shared = typeof store.isSelfMemoryText === "function" && !store.isSelfMemoryText(text);
+  return store.insertMemory({ bot_id: payload.bot_id || payload.botId || payload.persona_id || payload.personaId, user_id: shared ? null : author, author_id: author, kind: payload.kind || "fact", subject: payload.subject || "", content: text, source: payload.source || "explicit", source_message_id: payload.source_message_id || payload.message_id || null, confidence: payload.confidence ?? 1 });
 }
 
 async function sharedMemoryDelete(payload, query) {

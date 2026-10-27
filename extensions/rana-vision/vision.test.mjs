@@ -259,17 +259,18 @@ test("session-title prompts cannot replay an earlier Discord image request", asy
 });
 
 test("Vision endpoint discovery prefers LAN and retains Tailscale fallback", () => {
-  assert.deepEqual(clientTest.visionBaseUrls("http://192.168.50.3:6970", "http://100.99.83.84:6970/v1"), [
-    "http://192.168.50.3:6970",
-    "http://100.99.83.84:6970",
+  assert.deepEqual(clientTest.visionBaseUrls("http://127.0.0.1:6970", "http://198.51.100.7:6970/v1"), [
+    "http://127.0.0.1:6970",
+    "http://198.51.100.7:6970",
   ]);
 });
 
 test("Vision keeps the direct LAN endpoint ahead of inherited environment routes", () => {
-  assert.deepEqual(clientTest.visionBaseUrls("http://192.168.50.79:6970", "http://100.99.83.84:6970"), [
-    "http://192.168.50.3:6970",
-    "http://192.168.50.79:6970",
-    "http://100.99.83.84:6970",
+  // Under node --test the LAN host comes from hosts.example.json (127.0.0.1).
+  assert.deepEqual(clientTest.visionBaseUrls("http://192.0.2.79:6970", "http://198.51.100.7:6970"), [
+    "http://127.0.0.1:6970",
+    "http://192.0.2.79:6970",
+    "http://198.51.100.7:6970",
   ]);
 });
 
@@ -868,4 +869,20 @@ test("text-only web corroboration no longer upgrades external identity", async (
   });
   assert.equal(result.resolvedIdentity, null);
   assert.equal(result.reason, 'candidate_not_visually_verified');
+});
+
+test("ToriiGate zoom request: one real sub-region only, padded inside the frame, merged as text and one detail", () => {
+  assert.deepEqual(clientTest.parseZoomRequest('{"m":"anime","x":[],"t":[],"s":"手機","z":[[400,300,520,380]]}'), [400, 300, 520, 380]);
+  assert.equal(clientTest.parseZoomRequest('{"m":"anime","x":[],"t":[],"s":"","z":[]}'), null);
+  assert.equal(clientTest.parseZoomRequest('{"z":[[0,0,1000,1000]]}'), null);
+  assert.equal(clientTest.parseZoomRequest('{"z":[[10,10,15,15]]}'), null);
+  assert.equal(clientTest.parseZoomRequest("not json"), null);
+  assert.deepEqual(clientTest.zoomCropFraction([400, 300, 520, 380]).map((v) => Math.round(v * 1000)), [340, 260, 240, 160]);
+  assert.deepEqual(clientTest.zoomCropFraction([0, 900, 100, 1000]).map((v) => Math.round(v * 1000)), [0, 850, 150, 150]);
+  const merged = clientTest.mergeZoomObservation({ summary: "看手機的女孩", visible_text: ["字幕"] }, '{"x":["凛々子","字幕"],"d":"手機畫面上的聯絡人名稱"}', [400, 300, 520, 380]);
+  assert.deepEqual(merged.visible_text, ["字幕", "凛々子"]);
+  assert.equal(merged.summary, "看手機的女孩；放大看：手機畫面上的聯絡人名稱");
+  assert.deepEqual(merged.zoom.box, [400, 300, 520, 380]);
+  const broken = { summary: "a", visible_text: [] };
+  assert.equal(clientTest.mergeZoomObservation(broken, "oops", [1, 2, 3, 4]), broken);
 });

@@ -22,11 +22,13 @@ test("saved user facts are recalled from Rana's second-person viewpoint", () => 
   assert.equal(memoryTest.ranaMemoryRecallText("我的生日是七月十五日"), "你的生日是七月十五日。");
 });
 
-test("failed remember evidence blocks remembered-success wording", () => {
+// output_guard is observe-only (anti-cheat invariant): a failed remember is
+// handled by the tool result contract above, never by rewriting model text.
+test("failed remember evidence does not trigger a post-generation rewrite", () => {
   const hint = { agentId: "main", accountId: "default", sessionKey: "memory-failure-test", requester_id: "900000000000000002" };
   rememberDiscordContext({ agentId: "main", accountId: "default", sessionKey: hint.sessionKey, senderId: hint.requester_id, body: "@Rana 記住小陳喜歡吃拉麵" }, {});
   rememberToolEvidence("rana_memory", "remember", false, hint);
-  assert.deepEqual(guardOutgoingMessage("嗯。記住了。", hint), { content: "沒有真的記住。" });
+  assert.equal(guardOutgoingMessage("嗯。記住了。", hint), undefined);
 });
 
 test("explicit memory success still allows the normal Rana reply", () => {
@@ -37,7 +39,7 @@ test("explicit memory success still allows the normal Rana reply", () => {
 });
 
 test("memory write roles authorize explicit writes from the module-root rules path", () => {
-  assert.equal(memoryTest.rulesPath.endsWith("workspace\\services\\rana_hot_tools\\rules.json"), true);
+  assert.equal(/workspace[\\/]services[\\/]rana_hot_tools[\\/]rules\.json$/.test(memoryTest.rulesPath), true);
   assert.equal(memoryTest.memoryWritePermission({ senderId: "555555555555555555", roles: ["900000000000000004"] }, {}), true);
   assert.equal(memoryTest.memoryWritePermission({ senderId: "555555555555555555" }, {}), false);
 });

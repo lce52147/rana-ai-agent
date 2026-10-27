@@ -14,9 +14,9 @@
 
 ### 五個角色、一套對話流程
 
-每個角色有自己的 `PERSONA.json`、設定集和說話方式，但工具權限、記憶、輸出檢查是同一套，要加新角色不用重寫。平常用我電腦上 llama.cpp 跑的 Gemma 12B，失敗或逾時才換 Gemini Flash-Lite。12B 能吃的 context 不多，我把原本每一輪都要塞進去的 187 行規則壓成精簡版的 prompt，它才跑得動。
+每個角色有自己的 `PERSONA.json`、設定集和說話方式，但工具權限、記憶、證據檢查是同一套，要加新角色不用重寫。平常用我電腦上 llama.cpp 跑的 Gemma 12B，失敗或逾時才換 Gemini Flash-Lite。12B 能吃的 context 不多，我把原本每一輪都要塞進去的 187 行規則壓成精簡版的 prompt，它才跑得動。
 
-工具結果由程式決定，模型只負責講。歌有沒有放成功、記憶有沒有存進去、送了幾份禮物，都是程式先算好再交給模型，模型只能用角色的口吻轉述（`tool_receipt.js`）。回覆生成之後還會再檢查一次，擋掉捏造的事實、內部資訊，還有「拿去吧」但帳本根本沒動這種假交易。
+工具結果由程式決定，模型只負責講。歌有沒有放成功、記憶有沒有存進去、送了幾份禮物，都是程式先算好再交給模型，模型只能用角色的口吻轉述（`tool_receipt.js`）。該擋的都擋在生成之前：這一輪有哪些證據、能不能叫工具、帳本有沒有真的動，程式先判斷完才輪到模型。所以像「拿去吧」這種話，帳本沒扣款就不會有成交結果可以轉述。回覆生成之後我刻意不改寫模型的文字，只記錄下來；唯一會攔的是 OpenClaw 自己冒出來的系統通知（備援切換、context 爆掉），免得被當成角色的話送出去。
 
 ### 設定集和時事
 
@@ -67,7 +67,7 @@ flowchart LR
       WS[rana-web-search-guard]
     end
     LL[llama.cpp<br/>Gemma 12B :6969]
-    EM[EmbeddingGemma<br/>:6971]
+    EM[EmbeddingGemma<br/>桌機 127.0.0.1:6971]
     DB[(SQLite<br/>記憶 / 帳本)]
     HT[hot_tools<br/>記憶寫入 / 芭菲與禮物帳本]
     LIVE[FastAPI 播放佇列 :8080]
@@ -77,7 +77,7 @@ flowchart LR
 
   subgraph Laptop["筆電（區網）"]
     VLM[Qwen3-VL-8B<br/>llama.cpp :6970]
-    SC[Identity Sidecar<br/>CCIP / CLIP :6971]
+    SC[Identity Sidecar<br/>CCIP / CLIP<br/>筆電 :6971]
   end
 
   GEM[(Gemini Flash-Lite<br/>雲端備援)]
@@ -94,6 +94,8 @@ flowchart LR
   RT --> WS
 ```
 
+EmbeddingGemma 和 Identity Sidecar 都用 6971，但不衝突：前者只聽桌機的 127.0.0.1，後者跑在區網的筆電上（和 Qwen3-VL 同一台），桌機透過區網位址連過去。
+
 ## 一則訊息怎麼變成回覆
 
 ```mermaid
@@ -104,7 +106,7 @@ flowchart TD
   D --> E[檢索<br/>設定集 LORE + 長期記憶 + 時事]
   E --> F[context_engine / lean_prompt<br/>組出精簡 prompt]
   F --> G{本機 Gemma 12B}
-  G -- 成功 --> H[output_guard<br/>擋捏造、洩漏、冒充、過長]
+  G -- 成功 --> H[output_guard<br/>只記錄不改寫，攔掉 runtime 系統通知]
   G -- 逾時 --> G2[Gemini 備援] --> H
   H --> I[角色口吻回覆]
 ```
@@ -158,7 +160,7 @@ flowchart LR
 
 ## 我怎麼驗證
 
-- 大約 570 個 `node:test` 單元和回歸測試。每修一個 bug 我就補一個測試，例如「剛記住的事，馬上問『X 是誰』卻回答不知道」。
+- 大約 610 個 `node:test` 單元和回歸測試。每修一個 bug 我就補一個測試，例如「剛記住的事，馬上問『X 是誰』卻回答不知道」。
 - Live 測試：固定 21 句對話，直接在 Discord 上跑，看每個角色實際怎麼回。
 - 看圖用盲測。我先用肉眼把測試圖分成清楚、模糊、幾乎認不出來三級，再讓系統跑分，避免拿答案卷考自己。驗收標準是清楚的主角至少 95% 認對，而且一個名字都不能叫錯。
 
@@ -179,7 +181,7 @@ flowchart LR
 
 ```
 extensions/
-  rana-runtime/        對話管線、角色、記憶、親密度、設定集檢索、輸出檢查
+  rana-runtime/        對話管線、角色、記憶、親密度、設定集檢索、工具授權
     architecture/      turn plan、turn isolation、context engine、tool receipt
     memory/            SQLite 長期記憶
     lore/              設定集與記憶檢索
@@ -199,9 +201,9 @@ scripts/               設定集索引、測試 runner、工具腳本
 
 這是我本機實際在跑的原始碼，需要 OpenClaw gateway、llama.cpp、Lavalink 等外部程式（見 [EXTERNAL_BINARIES.md](EXTERNAL_BINARIES.md)），Discord ID 和區網主機位址放在不進 git 的 `discord_ids.local.json`、`hosts.local.json`（範例：`discord_ids.example.json`、`hosts.example.json`）。
 
-只跑測試：
+只跑測試（Node 22.5 以上）：
 
 ```bash
-cd extensions/rana-runtime && node --test
-cd extensions/rana-vision && node --test
+npm run setup   # 安裝 rana-runtime 的依賴、建好設定集索引
+npm test
 ```

@@ -10,6 +10,9 @@ test("Rana runtime has no custom before_model_resolve model override", async () 
       registrations.push({ name, callback, options });
     },
     registerTool() {},
+    registerHook() {},
+    registerTextTransforms() {},
+    registerContextEngine() {},
     logger: { warn() {} },
   });
 
@@ -24,14 +27,14 @@ test("Rana runtime has no custom before_model_resolve model override", async () 
 });
 
 test("offline OOGG keeps deterministic predispatch classification", () => {
-  assert.deepEqual(
-    classifyPreDispatch(
-      { body: "@Rana 現在想彈吉他嗎？", wasMentioned: true, sender_id: "900000000000000002" },
-      { channel: "discord" },
-      { modelOnline: false },
-    ),
-    { kind: "model", routeText: "@Rana 現在想彈吉他嗎？" },
+  // The bot is identified from the hook context (agent + account); without it the turn is not ours.
+  const result = classifyPreDispatch(
+    { body: "@Rana 現在想彈吉他嗎？", wasMentioned: true, sender_id: "900000000000000002" },
+    { channel: "discord", agentId: "main", accountId: "default", sessionKey: "agent:main:discord:channel:model-selection" },
+    { modelOnline: false },
   );
+  assert.equal(result.kind, "model");
+  assert.equal(result.routeText, "@Rana 現在想彈吉他嗎？");
 });
 
 test("message_sending guard hint preserves event metadata and hook context", () => {

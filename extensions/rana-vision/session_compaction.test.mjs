@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -8,9 +10,24 @@ import {
   stripHistoricalVisionWorkingPayloads,
 } from "./guidance.js";
 import { registerVisionTool } from "./tool.js";
+import { guardOutgoingMessage } from "../rana-runtime/output_guard.js";
 
-const CORE_SETTINGS = "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\openclaw\\dist\\agent-settings-axYuScuh.js";
-const CORE_RUNNER = "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\openclaw\\dist\\agent-runner.runtime-DtdxZiBX.js";
+// OpenClaw's dist files carry build hashes that change on every host update,
+// so locate them by prefix. Tests that need them skip on machines without the
+// host install (e.g. a fresh clone).
+const OPENCLAW_DIST = process.env.OPENCLAW_DIST
+  || path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "npm", "node_modules", "openclaw", "dist");
+function openclawDistFile(prefix) {
+  try {
+    const name = fs.readdirSync(OPENCLAW_DIST).find((file) => file.startsWith(prefix) && file.endsWith(".js"));
+    return name ? path.join(OPENCLAW_DIST, name) : null;
+  } catch {
+    return null;
+  }
+}
+const CORE_SETTINGS = openclawDistFile("agent-settings-");
+const CORE_RUNNER = openclawDistFile("agent-runner.runtime-");
+const NEEDS_CORE_SETTINGS = CORE_SETTINGS ? {} : { skip: "needs the OpenClaw host install (dist/agent-settings-*.js)" };
 
 test("historical Vision working payload is excluded from every later prompt", () => {
   const visionCallId = "call_vision";
@@ -110,7 +127,7 @@ test("Vision tool is optional and persists only the compact answer-facing payloa
   assert.ok(Buffer.byteLength(text, "utf8") < 4000);
 });
 
-test("explicit 2048 reserve overrides the larger Core default", async () => {
+test("explicit 2048 reserve overrides the larger Core default", NEEDS_CORE_SETTINGS, async () => {
   const core = await import(`${pathToFileURL(CORE_SETTINGS).href}?test=${Date.now()}`);
   let applied = null;
   const result = core.r({
@@ -136,14 +153,27 @@ test("explicit 2048 reserve overrides the larger Core default", async () => {
   assert.deepEqual(applied, { compaction: { reserveTokens: 2048 } });
 });
 
-test("Core overflow fallback cannot expose maintenance instructions", async () => {
-  const source = await readFile(CORE_RUNNER, "utf8");
-  const start = source.indexOf("function buildContextOverflowRecoveryText");
-  const end = source.indexOf("function buildRestartLifecycleReplyText", start);
-  assert.ok(start >= 0 && end > start);
-  const recovery = source.slice(start, end);
-  assert.doesNotMatch(recovery, /Auto-compaction could not recover|reserveTokensFloor|\/compact|\/new|config/);
-  assert.match(recovery, /現在回不了/);
+test("Core overflow recovery notices never reach Discord", () => {
+  const notices = [
+    "⚠️ Auto-compaction could not recover this turn. I kept this conversation mapped to the current session. Please try again, use /compact, or use /new to start a fresh session.",
+    "⚠️ Context limit exceeded during compaction. I've reset our conversation to start fresh - please try again.",
+    "⚠️ Context limit exceeded. I've reset our conversation to start fresh - please try again.",
+  ];
+  if (CORE_RUNNER) {
+    // On the host, also check the installed runner still emits these exact prefixes.
+    const source = fs.readFileSync(CORE_RUNNER, "utf8");
+    const start = source.indexOf("function buildContextOverflowRecoveryText");
+    assert.ok(start >= 0, "OpenClaw runner no longer has buildContextOverflowRecoveryText");
+    const recovery = source.slice(start, start + 2000);
+    for (const prefix of ["Auto-compaction could not recover this turn", "Context limit exceeded"]) {
+      assert.ok(recovery.includes(prefix) || recovery.includes("現在回不了"), prefix);
+    }
+  }
+  for (const notice of notices) {
+    const result = guardOutgoingMessage(notice, { sessionKey: "agent:main:discord:channel:overflow" });
+    assert.equal(result?.cancel, true, notice);
+  }
+  assert.equal(guardOutgoingMessage("我們練到 context 都滿了。", { sessionKey: "agent:main:discord:channel:overflow" }), undefined);
 });
 
 test("known, unknown, and error payload classification remains unchanged", () => {

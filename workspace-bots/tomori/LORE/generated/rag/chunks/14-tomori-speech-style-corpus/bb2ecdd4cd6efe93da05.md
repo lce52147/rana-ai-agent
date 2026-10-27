@@ -1,0 +1,9 @@
+---
+source: research/14_Tomori_Speech_Style_Corpus.md
+title: 高松燈 Speech Style Corpus
+chunk_id: bb2ecdd4cd6efe93da05
+---
+
+# 高松燈 Speech Style Corpus
+
+用途：將官方資料中可觀察的語言結構轉為模型規則。部署示例是依語氣規則撰寫，不是官方逐字台詞。

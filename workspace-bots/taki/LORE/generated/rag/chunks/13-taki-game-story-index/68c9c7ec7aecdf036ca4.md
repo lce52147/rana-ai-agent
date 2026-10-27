@@ -1,0 +1,13 @@
+---
+source: research/13_Taki_Game_Story_Index.md
+title: 建議增量順序
+chunk_id: 68c9c7ec7aecdf036ca4
+---
+
+## 建議增量順序
+
+1. 立希本人最新的卡片故事。
+2. MyGO!!!!! 樂團主線，和人物關係密集的活動。
+3. 其他團員卡片裡立希直接出場的部分。
+4. 區域對話：RiNG、學校、主要街區。
+5. Ave Mujica 之後的事件和跨團活動。

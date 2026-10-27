@@ -243,9 +243,10 @@ test("runtime answers those commands itself with the speaker's own wording, with
   assert.equal((await handleMemoryRequest({ action: "remember_cross", target: "愛音ちゃん", text: "" }, { agentId: "anon", accountId: "anon", requesterId: "900000000000000001" }, {}, ""))?.text, PERSONA_REPLIES.anon.rememberEmpty);
 });
 
-test("unauthorized explicit memory commands stay in the normal model path", async () => {
+test("unauthorized explicit forget commands stay in the normal model path", async () => {
   const event = { agentId: "anon", accountId: "anon", requesterId: "999999999999999999" };
-  assert.equal(await handleMemoryRequest({ action: "remember", text: "", empty: true }, event, {}, ""), null);
+  // Remember is open to everyone for 抹茶芭菲, so an empty remember is answered, not passed on.
+  assert.equal((await handleMemoryRequest({ action: "remember", text: "", empty: true }, event, {}, ""))?.text, PERSONA_REPLIES.anon.rememberEmpty);
   assert.equal(await handleMemoryRequest({ action: "forget_bulk", text: "全部" }, event, {}, ""), null);
   assert.equal(await handleMemoryRequest({ action: "forget", text: "測試詞" }, event, {}, ""), null);
 });

@@ -2175,7 +2175,11 @@ function compileToolIntent(text, options = {}) {
     };
   }
 
-  const web = parseExplicitWebRequest(text) || proactiveRewardWebIntent(text);
+  // An attached-media marker is never search text: strip it from the query, and
+  // when nothing else is left (「幫我查」 + image) the turn belongs to Vision.
+  const rawWeb = parseExplicitWebRequest(text) || proactiveRewardWebIntent(text);
+  const webSubject = String(rawWeb?.subject || "").replace(/\[media attached:[^\]]*\]/giu, " ").replace(/\s+/gu, " ").trim();
+  const web = rawWeb && webSubject ? { ...rawWeb, subject: webSubject } : (rawWeb && !rawWeb.subject ? rawWeb : null);
   if (web) {
     return {
       requested: true,

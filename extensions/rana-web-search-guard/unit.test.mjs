@@ -37,7 +37,8 @@ test('finalize requests one bounded retry when no web search was called', async 
   const api = { on(name, fn) { hooks.set(name, fn); } };
   registerWebSearchGuard(api);
   const ctx = { runId: 'r1', sessionKey: 's1' };
-  const injected = await hooks.get('before_prompt_build')({ runId: 'r1', prompt: '邦圖神人是什麼意思' }, ctx);
+  // Only explicit lookup wording authorizes web_search; a bare definition question does not.
+  const injected = await hooks.get('before_prompt_build')({ runId: 'r1', prompt: '幫我查一下 邦圖神人' }, ctx);
   assert.match(injected.appendSystemContext, /web_search/);
   const decision = await hooks.get('before_agent_finalize')({ runId: 'r1', assistantText: '這詞我不熟，沒聽過。' }, ctx);
   assert.equal(decision.action, 'revise');
@@ -86,9 +87,9 @@ test('finalize revises an unsupported factual definition after web search', asyn
   const api = { on(name, fn) { hooks.set(name, fn); } };
   registerWebSearchGuard(api);
   const ctx = { runId: 'r3', sessionKey: 's3' };
-  const prompt = '\u8ddf\u6211\u8aaa\u8aaa\u90a6\u5716\u795e\u4eba\u662f\u4ec0\u9ebc\u610f\u601d';
+  const prompt = '幫我查一下邦圖神人是什麼意思';
   await hooks.get('before_prompt_build')({ runId: 'r3', prompt }, ctx);
-  await hooks.get('before_tool_call')({ runId: 'r3', toolName: 'web_search', params: { query: '\u90a6\u5716\u795e\u4eba' } }, ctx);
+  await hooks.get('before_tool_call')({ runId: 'r3', toolName: 'web_search', params: { query: '邦圖神人是什麼意思' } }, ctx);
   await hooks.get('after_tool_call')({
     runId: 'r3',
     toolName: 'web_search',

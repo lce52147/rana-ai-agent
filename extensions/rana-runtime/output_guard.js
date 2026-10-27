@@ -110,6 +110,14 @@ function isRuntimeFallbackNotice(text, content, contextHint) {
     || /^(?:↪️\s*)?selected model unavailable(?:\s*[:：-]\s*\S[\s\S]*)?$/iu.test(clean);
 }
 
+// OpenClaw's context-overflow recovery notice is host maintenance text
+// ("use /compact or /new"), not model output, so it is cancelled like the
+// fallback notice above.
+function isRuntimeContextOverflowNotice(text) {
+  const clean = firstText(text).trim();
+  return /^(?:⚠️\s*)?(?:Auto-compaction could not recover this turn|Context limit exceeded)\b/iu.test(clean);
+}
+
 function toolMetaValues(contextHint) {
   return [
     contextHint?.toolMetas,
@@ -234,7 +242,7 @@ function looksLikeBrokenPunctuation(text) {
 export function guardOutgoingMessage(content, contextHint) {
   const text = outgoingText(content).trim();
   if (!text) return undefined;
-  if (isRuntimeFallbackNotice(text)) {
+  if (isRuntimeFallbackNotice(text, content, contextHint)) {
     writeGenerationTrace({
       phase: "output_guard_protocol_boundary",
       action: "cancel_runtime_fallback_notice",
@@ -246,6 +254,19 @@ export function guardOutgoingMessage(content, contextHint) {
     return {
       cancel: true,
       cancelReason: "runtime_model_fallback_notice",
+    };
+  }
+  if (isRuntimeContextOverflowNotice(text)) {
+    writeGenerationTrace({
+      phase: "output_guard_protocol_boundary",
+      action: "cancel_runtime_context_overflow_notice",
+      sessionKey: String(contextHint?.sessionKey || ""),
+      runId: String(contextHint?.runId || ""),
+      rawCandidate: text.slice(0, 4000),
+    });
+    return {
+      cancel: true,
+      cancelReason: "runtime_context_overflow_notice",
     };
   }
   const botContext = resolveBotContext(contextHint, contextHint);

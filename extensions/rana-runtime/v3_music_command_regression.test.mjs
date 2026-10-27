@@ -7,6 +7,7 @@ import {
   resolveCurrentTurnToolSurface,
 } from "./current_turn_tool_contract.js";
 import { parseControlRequest, parsePlayRequest } from "./tool_contracts.js";
+import { buildUnifiedTurnPlan } from "./architecture/turn_plan.js";
 
 const MUSIC = [
   "rana_play_music",
@@ -19,16 +20,17 @@ const MUSIC = [
 ];
 
 function allowed(text) {
+  // The tool contract reads the semantic TurnPlan, never raw text.
   return resolveCurrentTurnToolSurface({
-    text,
+    plan: buildUnifiedTurnPlan(text),
     toolNames: ["read", ...MUSIC],
   }).allowedToolNames;
 }
 
 test("Chinese 播放 accepts natural no-space form without broadening English play", () => {
-  assert.deepEqual(parseMusicCommand("@樂奈 播放DJ小慌"), { target: "DJ小慌" });
-  assert.deepEqual(parseMusicCommand("@樂奈 播放 aizo"), { target: "aizo" });
-  assert.deepEqual(parseMusicCommand("@樂奈 play aizo"), { target: "aizo" });
+  assert.deepEqual(parseMusicCommand("@樂奈 播放DJ小慌"), { target: "DJ小慌", queue_mode: "append" });
+  assert.deepEqual(parseMusicCommand("@樂奈 播放 aizo"), { target: "aizo", queue_mode: "append" });
+  assert.deepEqual(parseMusicCommand("@樂奈 play aizo"), { target: "aizo", queue_mode: "append" });
   assert.equal(parseMusicCommand("@樂奈 player aizo"), null);
   assert.equal(parseMusicCommand("春日影這首歌的歌名很有感覺。"), null);
   assert.deepEqual(parsePlayRequest({ body: "@樂奈 播放DJ小慌" }), {
@@ -36,6 +38,7 @@ test("Chinese 播放 accepts natural no-space form without broadening English pl
     query: "DJ小慌",
     display: "DJ小慌",
     source: "youtube",
+    queue_mode: "append",
   });
 });
 
@@ -45,7 +48,7 @@ test("natural control forms are canonical and do not fall through to the model",
     ["@樂奈 下一首是什麼？", { kind: "next" }],
     ["@樂奈 停止", { kind: "stop" }],
     ["@樂奈 停止播放", { kind: "stop" }],
-    ["@樂奈 跳過", { kind: "skip", query: null }],
+    ["@樂奈 跳過", { kind: "skip", query: null, remove_only: false }],
     ["@樂奈 音量 35", { kind: "volume", volume: 35 }],
     ["@樂奈 進來我這個頻道", { kind: "join" }],
     ["@樂奈 離開這個頻道", { kind: "leave" }],
@@ -91,6 +94,6 @@ test("execution authorization uses the same canonical current-turn grammar", () 
     ["rana_skip_music", "停止", false],
   ];
   for (const [toolName, text, expected] of cases) {
-    assert.equal(isCurrentTurnToolAuthorized({ toolName, text }), expected, `${toolName}: ${text}`);
+    assert.equal(isCurrentTurnToolAuthorized({ toolName, plan: buildUnifiedTurnPlan(text) }), expected, `${toolName}: ${text}`);
   }
 });

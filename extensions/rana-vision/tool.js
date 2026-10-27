@@ -7,6 +7,7 @@ import {
   isCurrentTurnToolAuthorized,
   isCurrentUsableImagePath,
 } from "../rana-runtime/current_turn_tool_contract.js";
+import { buildUnifiedTurnPlan } from "../rana-runtime/architecture/turn_plan.js";
 
 const authorizedInboundPaths = new Map();
 const toolCapabilities = new Map();
@@ -40,15 +41,17 @@ function authorizeCurrentPrompt(event, ctx = {}, provenance = {}) {
   const paths = currentInboundPaths(event?.prompt);
   const key = visionTurnKey(event, ctx);
   if (!key) return [];
+  // The contract reads the semantic TurnPlan, never raw text.
+  const plan = buildUnifiedTurnPlan(firstText(event?.prompt));
   const explicitIntent = isCurrentTurnToolAuthorized({
     toolName: "rana_analyze_image",
-    text: event?.prompt,
+    plan,
     mediaProvenance: provenance,
   });
   const authorized = explicitIntent
     ? paths.filter((path) => isCurrentTurnToolAuthorized({
       toolName: "rana_analyze_image",
-      text: event?.prompt,
+      plan,
       mediaProvenance: provenance,
       mediaPath: path,
     }))
@@ -143,7 +146,7 @@ export function registerVisionTool(api, options = {}) {
     if (!isAuthorizedInboundPath(imagePath, { runId: turn })) return visionAuthorizationBlock();
     if (!isCurrentTurnToolAuthorized({
       toolName: "rana_analyze_image",
-      text: firstText(ctx?.currentTurnText).trim() || authorization.prompt,
+      plan: buildUnifiedTurnPlan(firstText(ctx?.currentTurnText).trim() || authorization.prompt),
       mediaProvenance: authorization.provenance,
       mediaPath: imagePath,
     })) return visionAuthorizationBlock();

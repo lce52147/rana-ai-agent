@@ -5,9 +5,10 @@ import { registerVisionTool } from "../rana-vision/tool.js";
 import { __test as contextTest } from "./context_store.js";
 import {
   __test as contractTest,
-  isCurrentTurnToolAuthorized,
+  isCurrentTurnToolAuthorized as authorizeWithPlan,
   resolveCurrentTurnToolSurface,
 } from "./current_turn_tool_contract.js";
+import { buildUnifiedTurnPlan } from "./architecture/turn_plan.js";
 import { registerTurnToolSurface } from "./tool_surface.js";
 import { registerStockTool } from "./tools/stock.js";
 
@@ -36,9 +37,15 @@ function currentImageProvenance(overrides = {}) {
   };
 }
 
+// The contract reads the semantic TurnPlan, never raw text; these tests state
+// cases as user text and compile the plan the same way the runtime does.
+function isCurrentTurnToolAuthorized({ text, ...rest }) {
+  return authorizeWithPlan({ ...rest, plan: buildUnifiedTurnPlan(text) });
+}
+
 function surface(text, mediaProvenance) {
   return resolveCurrentTurnToolSurface({
-    text,
+    plan: buildUnifiedTurnPlan(text),
     mediaProvenance,
     toolNames: [OTHER, ...ALL_MUSIC, VISION, STOCK],
   });
@@ -83,7 +90,7 @@ test("ordinary named/persona/noun turns expose none of the gated schemas", () =>
 test("authorized forms expose only the required gated schema", () => {
   const cases = [
     { text: "\u64ad\u653e \u6625\u65e5\u5f71", required: MUSIC },
-    { text: "play https://example.test/song", required: MUSIC },
+    { text: "play https://youtu.be/v3-current-song", required: MUSIC },
     {
       text: `\u7d66\u4f60\u62b9\u8336\u82ad\u83f2 [media attached: ${IMAGE_PATH} (image/png)]`,
       media: currentImageProvenance(),
@@ -210,8 +217,17 @@ test("Vision requires current usable media plus explicit intent and rejects stal
       text: "\u5e6b\u6211\u67e5",
       mediaProvenance: currentImageProvenance(),
     }),
+    false,
+    "a bare 幫我查 with no media marker or image target is not a Vision turn (it may be a search)",
+  );
+  assert.equal(
+    isCurrentTurnToolAuthorized({
+      toolName: VISION,
+      text: `\u5e6b\u6211\u67e5 [media attached: ${IMAGE_PATH} (image/png)]`,
+      mediaProvenance: currentImageProvenance(),
+    }),
     true,
-    "a bare vision operation is authorized when trusted current provenance exists",
+    "幫我查 with the current image marker is a Vision turn, not a web search for the marker",
   );
   assert.equal(
     isCurrentTurnToolAuthorized({
@@ -280,8 +296,17 @@ test("Vision intent is independent from media markers and uses trusted current p
       text: "\u5e6b\u6211\u770b",
       mediaProvenance: current,
     }),
+    false,
+    "bare \u5e6b\u6211\u770b without an image target or marker is not a Vision turn",
+  );
+  assert.equal(
+    isCurrentTurnToolAuthorized({
+      toolName: VISION,
+      text: `\u5e6b\u6211\u770b ${marker}`,
+      mediaProvenance: current,
+    }),
     true,
-    "bare \u5e6b\u6211\u770b uses trusted current provenance for media authorization",
+    "\u5e6b\u6211\u770b with the current marker uses trusted provenance",
   );
   assert.equal(
     isCurrentTurnToolAuthorized({
@@ -594,7 +619,8 @@ test("gated schema descriptions state only the current-turn whitelist", () => {
     requesterSenderId: OWNER_ID,
   });
   assert.match(music.description, /current user turn/u);
-  assert.match(music.description, /play <keyword-or-URL>/u);
+  assert.match(music.description, /explicitly requests playback \(播放\/play\)/u);
+  assert.match(music.description, /never model-supplied parameters/u);
   assert.match(stockFactory.description, /\u6211\u60f3\u770b\u7f8e\u80a1 <stock ID>/u);
   assert.match(vision.description, /usable current image\/media/u);
   assert.doesNotMatch(music.description, /MUST call|persona|Discord voice pipeline/u);
@@ -605,14 +631,16 @@ test("gated schema descriptions state only the current-turn whitelist", () => {
 test("contract parser exposes explicit negative decisions without using model params", () => {
   assert.deepEqual(contractTest.parseMusicCommand("<@123> \u64ad\u653e \u6625\u65e5\u5f71"), {
     target: "\u6625\u65e5\u5f71",
+    queue_mode: "append",
   });
   assert.deepEqual(contractTest.parseMusicCommand("<@!123> play spring shadow"), {
     target: "spring shadow",
+    queue_mode: "append",
   });
   for (const handle of ["Rana", "\u6a02\u5948", "Tomori", "Soyo", "Taki"]) {
     assert.deepEqual(
       contractTest.parseMusicCommand(`@${handle} \u64ad\u653e \u6625\u65e5\u5f71`),
-      { target: "\u6625\u65e5\u5f71" },
+      { target: "\u6625\u65e5\u5f71", queue_mode: "append" },
       handle,
     );
   }

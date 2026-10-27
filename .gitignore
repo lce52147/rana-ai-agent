@@ -16,6 +16,7 @@
 !/discord_ids.example.json
 !/hosts.example.json
 !/README.md
+!/package.json
 
 # ---- never track, even inside allowed directories ----
 # credentials, device identity, per-device state
@@ -88,7 +89,12 @@ devices/
 !/workspace-bots/*/TOOLS.md
 !/workspace-bots/*/LORE/
 !/workspace-bots/*/LORE/**
-/workspace-bots/*/LORE/generated/
+# persona RAG corpora are tracked (small, needed by tests); indexes and reports are rebuilt locally
+/workspace-bots/*/LORE/generated/*
+!/workspace-bots/*/LORE/generated/rag/
+/workspace-bots/*/LORE/generated/rag/*
+!/workspace-bots/*/LORE/generated/rag/chunk_manifest.json
+!/workspace-bots/*/LORE/generated/rag/chunks/
 **/memory/
 **/sessions/
 /agents/

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { PERSONA_IDS, getPersonaProfile, stablePersonaProfile } from "./persona_registry.js";
 import { buildUnifiedTurnPlan } from "./architecture/turn_plan.js";
@@ -9,6 +11,8 @@ import {
   buildPersonaGenerationContext,
   buildPersonaRelationshipContext,
 } from "./persona_context.js";
+
+const OPENCLAW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function personaCtx(id) {
   return {
@@ -20,7 +24,7 @@ function personaCtx(id) {
 
 function loadConfig(id) {
   const profile = getPersonaProfile(id);
-  return JSON.parse(fs.readFileSync(`${profile.workspace}\\PERSONA.json`, "utf8").replace(/^\uFEFF/u, ""));
+  return JSON.parse(fs.readFileSync(path.join(profile.workspace, "PERSONA.json"), "utf8").replace(/^\uFEFF/u, ""));
 }
 
 const CONFIGS = Object.fromEntries(PERSONA_IDS.map((id) => [id, loadConfig(id)]));
@@ -40,11 +44,11 @@ const CONTROLLED_TOP_LEVEL_KEYS = Object.freeze([
   "relationships",
 ].sort());
 const LORE_AUTHORITY_FILES = Object.freeze({
-  rana: "C:\\Users\\Administrator\\.openclaw\\workspace\\LORE\\runtime\\06_Rana_Character_Impressions.json",
-  tomori: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\tomori\\LORE\\runtime\\06_Tomori_Character_Impressions.json",
-  anon: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\anon\\LORE\\runtime\\06_Anon_Character_Impressions.json",
-  soyo: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\soyo\\LORE\\runtime\\06_Soyo_Character_Impressions.json",
-  taki: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\taki\\LORE\\runtime\\06_Taki_Character_Impressions.json",
+  rana: path.join(OPENCLAW_ROOT, "workspace", "LORE", "runtime", "06_Rana_Character_Impressions.json"),
+  tomori: path.join(OPENCLAW_ROOT, "workspace-bots", "tomori", "LORE", "runtime", "06_Tomori_Character_Impressions.json"),
+  anon: path.join(OPENCLAW_ROOT, "workspace-bots", "anon", "LORE", "runtime", "06_Anon_Character_Impressions.json"),
+  soyo: path.join(OPENCLAW_ROOT, "workspace-bots", "soyo", "LORE", "runtime", "06_Soyo_Character_Impressions.json"),
+  taki: path.join(OPENCLAW_ROOT, "workspace-bots", "taki", "LORE", "runtime", "06_Taki_Character_Impressions.json"),
 });
 
 function otherPersonaIds(activeId) {

@@ -1,4 +1,7 @@
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { extractMemoryCandidates, __test as extractorTest } from "./auto_extractor.js";
@@ -37,10 +40,21 @@ test("failed assistant messages do not consume the pending user turn", () => {
   assert.equal(result.userId, "444");
 });
 
-test("collector falls back through the live session index to a transcript", () => {
-  const result = extractorTest.collectTurn({ sessionKey: "agent:taki:discord:channel:900000000000000007" }, { agentId: "taki" });
-  assert.ok(result.user.length > 0);
-  assert.ok(result.assistant.length > 0);
+test("collector falls back through the session index to a transcript", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rana-extractor-"));
+  const sessions = path.join(root, "agents", "taki", "sessions");
+  fs.mkdirSync(sessions, { recursive: true });
+  const sessionKey = "agent:taki:discord:channel:900000000000000007";
+  fs.writeFileSync(path.join(sessions, "sessions.json"), JSON.stringify({ [sessionKey]: { sessionId: "s1" } }));
+  fs.writeFileSync(path.join(sessions, "s1.jsonl"), [
+    { type: "message", message: { role: "user", content: "今天排練幾點？", __openclaw: { senderId: "555" } } },
+    { type: "message", message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "七點。" }] } },
+  ].map((row) => JSON.stringify(row)).join("\n"));
+  extractorTest.setSessionsRoot(root);
+  t.after(() => extractorTest.setSessionsRoot(null));
+  const result = extractorTest.collectTurn({ sessionKey }, { agentId: "taki" });
+  assert.equal(result.user, "今天排練幾點？");
+  assert.equal(result.assistant, "七點。");
 });
 
 test("busy probe recognizes explicit in-flight state", () => {

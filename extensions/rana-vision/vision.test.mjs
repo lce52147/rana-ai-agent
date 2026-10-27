@@ -651,7 +651,9 @@ test("accepted identity output guard allows only resolver-supported character na
     userQuestion: "這是誰？",
   };
   assert.equal(guidanceTest.guardVisionIdentityOutput("這是我。", payload), "這是我。");
-  assert.equal(guidanceTest.guardVisionIdentityOutput("是我，但有點像燈。", payload), "是我。");
+  // A bare 燈 after 像 is too ambiguous for the entity resolver (it is also
+  // the word "lamp"), so the unsupported-name case uses the full name.
+  assert.equal(guidanceTest.guardVisionIdentityOutput("是我，但有點像高松燈。", payload), "是我。");
   assert.equal(guidanceTest.guardVisionIdentityOutput("這是我。要樂奈。\n灰白短髮、異色瞳的我。", payload), "是我。");
   assert.equal(guidanceTest.guardVisionIdentityOutput("這是我。正在吃著抹茶芭菲。", payload), "是我。");
   assert.equal(guidanceTest.guardVisionIdentityOutput("我。拍太近了。", payload), "我。拍太近了。");

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import {
   CCIP_DEFAULTS,
   CCIP_SCHEMA,
@@ -81,8 +82,9 @@ assert.throws(() => parseBank(bankJson([{ id: "rana", feature: feature([1, 2, 3]
 passed += 1;
 
 const resolved = resolveCcipOptions({ modelDir: "m", bankPath: "b.json" }, "/root/sidecar");
-check(resolved.featurePath === "/root/sidecar/m/ccip-caformer-24-randaug-pruned/model_feat.onnx", "model paths resolve under modelDir");
-check(resolved.bankPath === "/root/sidecar/b.json", "bank path resolves under the sidecar root");
+// path.resolve gives a drive-letter path on Windows, so build the expectation the same way.
+check(resolved.featurePath === path.resolve("/root/sidecar", "m", "ccip-caformer-24-randaug-pruned", "model_feat.onnx"), "model paths resolve under modelDir");
+check(resolved.bankPath === path.resolve("/root/sidecar", "b.json"), "bank path resolves under the sidecar root");
 
 // End to end with a fake runtime: one detected face whose feature is closest to the rana items.
 const calls = { metric: [] };

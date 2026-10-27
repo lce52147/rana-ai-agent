@@ -1,0 +1,458 @@
+[
+  {
+    "id": "a53a9f5917294a2b1130",
+    "source": "LORE_MANIFEST.md",
+    "title": "椎名立希 LORE MANIFEST",
+    "path": "generated/rag/chunks/lore-manifest/a53a9f5917294a2b1130.md",
+    "chars": 20,
+    "tokens": 6
+  },
+  {
+    "id": "2cb643cec32d55ad844a",
+    "source": "LORE_MANIFEST.md",
+    "title": "Runtime",
+    "path": "generated/rag/chunks/lore-manifest/2cb643cec32d55ad844a.md",
+    "chars": 98,
+    "tokens": 1
+  },
+  {
+    "id": "40ed00fd3f25a5e0fd2e",
+    "source": "LORE_MANIFEST.md",
+    "title": "Research",
+    "path": "generated/rag/chunks/lore-manifest/40ed00fd3f25a5e0fd2e.md",
+    "chars": 538,
+    "tokens": 1
+  },
+  {
+    "id": "cbe059cf6711395465bc",
+    "source": "LORE_MANIFEST.md",
+    "title": "Generated retrieval",
+    "path": "generated/rag/chunks/lore-manifest/cbe059cf6711395465bc.md",
+    "chars": 205,
+    "tokens": 2
+  },
+  {
+    "id": "f53a5533c589eb5f453d",
+    "source": "LORE_MANIFEST.md",
+    "title": "Loading",
+    "path": "generated/rag/chunks/lore-manifest/f53a5533c589eb5f453d.md",
+    "chars": 71,
+    "tokens": 35
+  },
+  {
+    "id": "4fd55df3b97a2a88c8ad",
+    "source": "runtime/06_Taki_Character_Impressions.json",
+    "title": " 1",
+    "path": "generated/rag/chunks/06-taki-character-impressions/4fd55df3b97a2a88c8ad.md",
+    "chars": 4310,
+    "tokens": 4452
+  },
+  {
+    "id": "9fa0694eeeb8f66036f0",
+    "source": "runtime/07_Taki_Vision_Identity.json",
+    "title": "",
+    "path": "generated/rag/chunks/07-taki-vision-identity/9fa0694eeeb8f66036f0.md",
+    "chars": 646,
+    "tokens": 90
+  },
+  {
+    "id": "2679cf480bf0a813ceac",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "椎名立希 人物關係表",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/2679cf480bf0a813ceac.md",
+    "chars": 12,
+    "tokens": 10
+  },
+  {
+    "id": "06b15189844b733de728",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "等級怎麼分",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/06b15189844b733de728.md",
+    "chars": 237,
+    "tokens": 192
+  },
+  {
+    "id": "235de4703d6daa61650b",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "主要人物",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/235de4703d6daa61650b.md",
+    "chars": 667,
+    "tokens": 563
+  },
+  {
+    "id": "a401db89c5dd8fae16d2",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "群聊裡被問到人物時",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/a401db89c5dd8fae16d2.md",
+    "chars": 340,
+    "tokens": 188
+  },
+  {
+    "id": "a89187abd3c1625b4c04",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "怎麼叫人",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/a89187abd3c1625b4c04.md",
+    "chars": 131,
+    "tokens": 96
+  },
+  {
+    "id": "27d67827864c23040d8d",
+    "source": "research/11_Taki_Relationship_Map_Full.md",
+    "title": "關係是有方向的",
+    "path": "generated/rag/chunks/11-taki-relationship-map-full/27d67827864c23040d8d.md",
+    "chars": 100,
+    "tokens": 85
+  },
+  {
+    "id": "af798eede3058308521a",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "椎名立希 記得的人 Remembered People Evidence",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/af798eede3058308521a.md",
+    "chars": 71,
+    "tokens": 44
+  },
+  {
+    "id": "f940d6ca5b8c9d8818e0",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "收錄門檻",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/f940d6ca5b8c9d8818e0.md",
+    "chars": 151,
+    "tokens": 138
+  },
+  {
+    "id": "7c39b39853598795eeab",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "高松燈（S）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/7c39b39853598795eeab.md",
+    "chars": 93,
+    "tokens": 90
+  },
+  {
+    "id": "33593859f983ab15a837",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "千早愛音（A）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/33593859f983ab15a837.md",
+    "chars": 97,
+    "tokens": 94
+  },
+  {
+    "id": "059457c5474bf9bf9f3e",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "長崎爽世（A）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/059457c5474bf9bf9f3e.md",
+    "chars": 81,
+    "tokens": 78
+  },
+  {
+    "id": "7222cd1712b3d7276be0",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "要樂奈（A）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/7222cd1712b3d7276be0.md",
+    "chars": 82,
+    "tokens": 79
+  },
+  {
+    "id": "27f9c7109d91c5ce0fae",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "八幡海鈴（B/A）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/27f9c7109d91c5ce0fae.md",
+    "chars": 103,
+    "tokens": 100
+  },
+  {
+    "id": "93822074e9fdd9dac1da",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "豐川祥子（A-Past）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/93822074e9fdd9dac1da.md",
+    "chars": 73,
+    "tokens": 60
+  },
+  {
+    "id": "72cd712ff7a5d32c9393",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "若葉睦（B/A-Past）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/72cd712ff7a5d32c9393.md",
+    "chars": 55,
+    "tokens": 42
+  },
+  {
+    "id": "692f79b1e8d85b9cc9ff",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "姐姐（B）",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/692f79b1e8d85b9cc9ff.md",
+    "chars": 69,
+    "tokens": 66
+  },
+  {
+    "id": "5541074cf5d9a6c6d7ee",
+    "source": "research/11_Taki_Remembered_People_Evidence.md",
+    "title": "修正規則",
+    "path": "generated/rag/chunks/11-taki-remembered-people-evidence/5541074cf5d9a6c6d7ee.md",
+    "chars": 97,
+    "tokens": 80
+  },
+  {
+    "id": "42d4e4030072278b3805",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "椎名立希 互動方式",
+    "path": "generated/rag/chunks/12-taki-interaction-index/42d4e4030072278b3805.md",
+    "chars": 11,
+    "tokens": 9
+  },
+  {
+    "id": "ba8b8e53ccb165c5d096",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "一般對話",
+    "path": "generated/rag/chunks/12-taki-interaction-index/ba8b8e53ccb165c5d096.md",
+    "chars": 139,
+    "tokens": 119
+  },
+  {
+    "id": "35222eabb2d7deea02b3",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "不同情況下怎麼回",
+    "path": "generated/rag/chunks/12-taki-interaction-index/35222eabb2d7deea02b3.md",
+    "chars": 304,
+    "tokens": 287
+  },
+  {
+    "id": "2130b0664c34a2fcf843",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "跟各個人物",
+    "path": "generated/rag/chunks/12-taki-interaction-index/2130b0664c34a2fcf843.md",
+    "chars": 212,
+    "tokens": 184
+  },
+  {
+    "id": "0bbc2a1111a86a729436",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "群聊",
+    "path": "generated/rag/chunks/12-taki-interaction-index/0bbc2a1111a86a729436.md",
+    "chars": 37,
+    "tokens": 27
+  },
+  {
+    "id": "bf56f8a6baa7fa045843",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "誰對誰做了什麼，不要搞反",
+    "path": "generated/rag/chunks/12-taki-interaction-index/bf56f8a6baa7fa045843.md",
+    "chars": 161,
+    "tokens": 145
+  },
+  {
+    "id": "e503aebd762eb355ab90",
+    "source": "research/12_Taki_Interaction_Index.md",
+    "title": "回答長度",
+    "path": "generated/rag/chunks/12-taki-interaction-index/e503aebd762eb355ab90.md",
+    "chars": 107,
+    "tokens": 94
+  },
+  {
+    "id": "fb3ea03ead412a7baf8a",
+    "source": "research/13_Taki_Game_Story_Index.md",
+    "title": "椎名立希 遊戲故事索引",
+    "path": "generated/rag/chunks/13-taki-game-story-index/fb3ea03ead412a7baf8a.md",
+    "chars": 136,
+    "tokens": 73
+  },
+  {
+    "id": "9dd035ae4e660bab9935",
+    "source": "research/13_Taki_Game_Story_Index.md",
+    "title": "目前讀過或定位過的",
+    "path": "generated/rag/chunks/13-taki-game-story-index/9dd035ae4e660bab9935.md",
+    "chars": 796,
+    "tokens": 473
+  },
+  {
+    "id": "dd4f78ccec1a0e570304",
+    "source": "research/13_Taki_Game_Story_Index.md",
+    "title": "索引使用規則",
+    "path": "generated/rag/chunks/13-taki-game-story-index/dd4f78ccec1a0e570304.md",
+    "chars": 209,
+    "tokens": 168
+  },
+  {
+    "id": "68c9c7ec7aecdf036ca4",
+    "source": "research/13_Taki_Game_Story_Index.md",
+    "title": "建議增量順序",
+    "path": "generated/rag/chunks/13-taki-game-story-index/68c9c7ec7aecdf036ca4.md",
+    "chars": 125,
+    "tokens": 97
+  },
+  {
+    "id": "fcb9a742b19214640fb6",
+    "source": "research/13_Taki_Game_Story_Index.md",
+    "title": "Runtime 影響",
+    "path": "generated/rag/chunks/13-taki-game-story-index/fcb9a742b19214640fb6.md",
+    "chars": 58,
+    "tokens": 48
+  },
+  {
+    "id": "7a5d70b3a7b19812dce4",
+    "source": "research/15_Taki_MaigoShukai_Index.md",
+    "title": "椎名立希 《迷子集會》索引",
+    "path": "generated/rag/chunks/15-taki-maigoshukai-index/7a5d70b3a7b19812dce4.md",
+    "chars": 128,
+    "tokens": 118
+  },
+  {
+    "id": "ad18d0d6fc289d05413d",
+    "source": "research/15_Taki_MaigoShukai_Index.md",
+    "title": "之後要整理時的規則",
+    "path": "generated/rag/chunks/15-taki-maigoshukai-index/ad18d0d6fc289d05413d.md",
+    "chars": 304,
+    "tokens": 257
+  },
+  {
+    "id": "d3ea7d6d350c73a2148c",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "椎名立希 資料來源",
+    "path": "generated/rag/chunks/16-taki-source-audit/d3ea7d6d350c73a2148c.md",
+    "chars": 28,
+    "tokens": 19
+  },
+  {
+    "id": "f251d72510610ac977b6",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "來源分幾種",
+    "path": "generated/rag/chunks/16-taki-source-audit/f251d72510610ac977b6.md",
+    "chars": 241,
+    "tokens": 218
+  },
+  {
+    "id": "e2caf1b650d23f62eb27",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "立希的官方頁面",
+    "path": "generated/rag/chunks/16-taki-source-audit/e2caf1b650d23f62eb27.md",
+    "chars": 139,
+    "tokens": 64
+  },
+  {
+    "id": "1723322d40454b0dd32d",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "大家共用的官方頁面",
+    "path": "generated/rag/chunks/16-taki-source-audit/1723322d40454b0dd32d.md",
+    "chars": 414,
+    "tokens": 193
+  },
+  {
+    "id": "c455ad8d20d2f7b5d660",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "部署時的觀察",
+    "path": "generated/rag/chunks/16-taki-source-audit/c455ad8d20d2f7b5d660.md",
+    "chars": 99,
+    "tokens": 88
+  },
+  {
+    "id": "04a4ca753b4b3eef9469",
+    "source": "research/16_Taki_Source_Audit.md",
+    "title": "不能混進來的東西",
+    "path": "generated/rag/chunks/16-taki-source-audit/04a4ca753b4b3eef9469.md",
+    "chars": 127,
+    "tokens": 117
+  },
+  {
+    "id": "f87154e6ebd4390136b2",
+    "source": "research/17_Taki_Official_Small_Theater_Index.md",
+    "title": "椎名立希 官方小劇場與周邊文本索引",
+    "path": "generated/rag/chunks/17-taki-official-small-theater-index/f87154e6ebd4390136b2.md",
+    "chars": 72,
+    "tokens": 67
+  },
+  {
+    "id": "ec13f81448b345d4a305",
+    "source": "research/17_Taki_Official_Small_Theater_Index.md",
+    "title": "可以用的來源",
+    "path": "generated/rag/chunks/17-taki-official-small-theater-index/ec13f81448b345d4a305.md",
+    "chars": 195,
+    "tokens": 182
+  },
+  {
+    "id": "46c1525dc37d6ff28430",
+    "source": "research/17_Taki_Official_Small_Theater_Index.md",
+    "title": "要用在立希身上時",
+    "path": "generated/rag/chunks/17-taki-official-small-theater-index/46c1525dc37d6ff28430.md",
+    "chars": 154,
+    "tokens": 146
+  },
+  {
+    "id": "ddd2f14b49663143debe",
+    "source": "research/18_Coverage_Report.md",
+    "title": "椎名立希 資料覆蓋範圍",
+    "path": "generated/rag/chunks/18-coverage-report/ddd2f14b49663143debe.md",
+    "chars": 13,
+    "tokens": 11
+  },
+  {
+    "id": "6705c51c50f6df574540",
+    "source": "research/18_Coverage_Report.md",
+    "title": "總結",
+    "path": "generated/rag/chunks/18-coverage-report/6705c51c50f6df574540.md",
+    "chars": 85,
+    "tokens": 82
+  },
+  {
+    "id": "4afd22c7212635fb8a36",
+    "source": "research/18_Coverage_Report.md",
+    "title": "仔細讀過、核對過的",
+    "path": "generated/rag/chunks/18-coverage-report/4afd22c7212635fb8a36.md",
+    "chars": 172,
+    "tokens": 133
+  },
+  {
+    "id": "215009d74bb3ce9fa828",
+    "source": "research/18_Coverage_Report.md",
+    "title": "知道在哪，需要時再讀",
+    "path": "generated/rag/chunks/18-coverage-report/215009d74bb3ce9fa828.md",
+    "chars": 87,
+    "tokens": 64
+  },
+  {
+    "id": "41cb4575709329dc0bc2",
+    "source": "research/18_Coverage_Report.md",
+    "title": "沒做完的",
+    "path": "generated/rag/chunks/18-coverage-report/41cb4575709329dc0bc2.md",
+    "chars": 84,
+    "tokens": 74
+  },
+  {
+    "id": "5c608a75eaeeb2f920e6",
+    "source": "research/18_Coverage_Report.md",
+    "title": "RAG 索引",
+    "path": "generated/rag/chunks/18-coverage-report/5c608a75eaeeb2f920e6.md",
+    "chars": 184,
+    "tokens": 93
+  },
+  {
+    "id": "e6b409c935f56473c6a3",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "群聊互動規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/e6b409c935f56473c6a3.md",
+    "chars": 71,
+    "tokens": 60
+  },
+  {
+    "id": "279709c9e5ab7c8ae21e",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "基本原則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/279709c9e5ab7c8ae21e.md",
+    "chars": 93,
+    "tokens": 74
+  },
+  {
+    "id": "8fd1a2ab129af1dcab41",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/8fd1a2ab129af1dcab41.md",
+    "chars": 291,
+    "tokens": 252
+  },
+  {
+    "id": "ff2416bb318b70690fae",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "大概的互動節奏",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/ff2416bb318b70690fae.md",
+    "chars": 170,
+    "tokens": 158
+  }
+]

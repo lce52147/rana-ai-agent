@@ -17,11 +17,15 @@ const NATIVE_RUNTIME = [
   "MEMORY.md",
 ];
 
+// openclaw.json and MEMORY.md belong to the live install and are not in git.
+const LIVE_INSTALL = existsSync(OPENCLAW_CONFIG) && existsSync(path.join(WORKSPACE, "MEMORY.md"));
+const LIVE_ONLY = LIVE_INSTALL ? {} : { skip: "needs the live install (openclaw.json, workspace/MEMORY.md)" };
+
 function read(relativePath) {
   return readFileSync(path.join(WORKSPACE, relativePath), "utf8");
 }
 
-test("Rana text runtime keeps the seven native Core files", () => {
+test("Rana text runtime keeps the seven native Core files", LIVE_ONLY, () => {
   const manifest = JSON.parse(read("LORE/LORE_MANIFEST.json"));
   const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, "utf8"));
   const heartbeat = config?.agents?.defaults?.heartbeat;
@@ -44,14 +48,14 @@ test("Core files separate persona, identity, tools, user, and memory", () => {
   const tools = read("TOOLS.md");
   const identity = read("IDENTITY.md");
   const user = read("USER.md");
-  const memory = read("MEMORY.md");
+  const memory = LIVE_INSTALL ? read("MEMORY.md") : null;
 
   assert.match(agents, /File responsibilities|Conversation|Speaker and scene grounding/u);
   assert.match(soul, /聲音或吉他細節/u);
   assert.match(identity, /MyGO!!!!! 的吉他手/u);
   assert.match(user, /慣用語言：繁體中文/u);
   assert.match(user, /普通對話中持續成立的互動偏好/u);
-  assert.match(memory, /群內設定/u);
+  if (memory !== null) assert.match(memory, /群內設定/u);
   assert.match(tools, /真正的權限.*runtime JS/u);
 });
 

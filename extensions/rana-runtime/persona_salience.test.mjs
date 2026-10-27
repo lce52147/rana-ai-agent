@@ -48,30 +48,36 @@ test("one registry-driven authority prefix preserves each routed persona", () =>
     assert.match(context, new RegExp(name, "u"));
     assert.match(context, new RegExp(`personaId=${personaId}`, "u"));
     assert.match(context, /IDENTITY\.md and SOUL\.md/u);
-    assert.match(context, /personal assistant.*runtime function only/u);
-    assert.match(context, /does not prove.*event happened today or now/u);
+    assert.match(context, /None of these files independently establish a current, past or future event/u);
     assert.doesNotMatch(context, /--- (?:IDENTITY|SOUL)\.md ---/u);
-    assert.ok(context.length < 1000);
+    // Only Rana carries the stable Rana.md core; other personas stay a short prefix.
+    assert.ok(context.length < (personaId === "rana" ? 4000 : 1000));
     assert.doesNotMatch(context, /MEMORY\.md|LORE\/|PERSONA\.json/u);
   }
 });
 
-test("registered persona guidance uses system prefix without fabricating relationship context", () => {
+test("registered persona guidance neutralizes the generic assistant identity and appends persona context", () => {
   let hook;
+  const transforms = [];
   registerPersonaGuidance({
     on(name, handler) { if (name === "before_prompt_build") hook = handler; },
     registerTool() {},
+    registerTextTransforms(spec) { transforms.push(spec); },
   });
+  assert.deepEqual(transforms.flatMap((spec) => spec.input.map((rule) => rule.from)), [
+    "You are a personal assistant running inside OpenClaw.",
+  ]);
   const result = hook({ prompt: "今天好嗎？" }, {
     accountId: "anon",
     agentId: "anon",
     sessionKey: "agent:anon:discord:channel:test",
   });
-  assert.match(result.prependSystemContext, /千早愛音/u);
+  assert.match(result.appendSystemContext, /千早愛音/u);
+  assert.equal(result.prependSystemContext, undefined);
   assert.equal(result.appendContext, undefined);
 });
 
-test("provider projection removes stale answers and duplicate current prompts only", () => {
+test("provider projection drops tool turns and the current prompt's stale pair", () => {
   const messages = [
     { role: "user", content: "昨天聊過的事" },
     { role: "assistant", content: "stale persona answer", tool_calls: [{ id: "old" }] },
@@ -80,13 +86,24 @@ test("provider projection removes stale answers and duplicate current prompts on
     { role: "assistant", content: "stale repeated answer" },
   ];
   projectProviderMessages(messages, "今天有練習嗎？");
-  assert.deepEqual(messages, [{
-    role: "user",
-    content: "[Historical user turn; context only, not current-turn evidence]\n昨天聊過的事",
-  }]);
+  // A self-contained current turn receives no dialogue history at all.
+  assert.deepEqual(messages, []);
 });
 
-test("current-turn authority treats an unsupported question as ABSENT rather than NEGATIVE", () => {
+test("provider projection demotes history to quoted data for an unresolved follow-up", () => {
+  const messages = [
+    { role: "user", content: "昨天聊過的事" },
+    { role: "assistant", content: "好喔" },
+    { role: "user", content: "那個呢？" },
+  ];
+  projectProviderMessages(messages, "那個呢？");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].role, "user");
+  assert.match(messages[0].content, /^\[Historical dialogue data; context only/u);
+  assert.match(messages[0].content, /turn_1\.previous_assistant_text_json="好喔"/u);
+});
+
+test("turn isolation keeps evidence status trace-only and leaves the hook snapshot untouched", () => {
   let hook;
   registerTurnIsolation({
     on(name, handler) { if (name === "before_prompt_build") hook = handler; },
@@ -96,32 +113,28 @@ test("current-turn authority treats an unsupported question as ABSENT rather tha
     { role: "assistant", content: "stale answer" },
     { role: "user", content: "你今天有沒有做過類似的事？" },
   ];
+  const snapshot = structuredClone(messages);
   const result = hook({ prompt: "你今天有沒有練習？", messages }, {
     runId: "evidence-contract",
     sessionKey: "agent:taki:discord:channel:test",
   });
-  assert.match(result.prependSystemContext, /問句、沒有使用者陳述或可信工具結果/u);
-  assert.match(result.prependSystemContext, /event_evidence=ABSENT、speaker_certainty=UNKNOWN/u);
-  assert.match(result.prependSystemContext, /不得自行選擇有或沒有/u);
-  assert.match(result.appendContext, /requested_claim=active_speaker_current_event_or_state/u);
-  assert.match(result.appendContext, /direct_question_reply=REQUIRED; NO_REPLY=INVALID/u);
-  assert.match(result.prependSystemContext, /不能輸出 NO_REPLY/u);
-  assert.deepEqual(messages, []);
+  assert.equal(result?.prependSystemContext, undefined);
+  assert.doesNotMatch(String(result?.appendContext || ""), /TURN FACT STATE/u);
+  assert.deepEqual(messages, snapshot);
 });
 
-test("per-turn evidence status excludes preferences, third-party facts, and grounded results", () => {
-  const firstPass = buildPreGenerationEvidenceStatus("你今天有練習嗎？", []);
-  assert.match(firstPass, /evidence_status=ABSENT/u);
-  assert.doesNotMatch(firstPass, /current_request=/u);
-  const retry = buildPreGenerationEvidenceStatus("你今天有練習嗎？", [], { includeCurrentRequest: true });
-  assert.match(retry, /current_request="你今天有練習嗎？"/u);
-  assert.match(buildPreGenerationEvidenceStatus("@bot 今天到現在有練習嗎？", []), /evidence_status=ABSENT/u);
-  assert.equal(buildPreGenerationEvidenceStatus("你現在想吃嗎？", []), "");
-  assert.equal(buildPreGenerationEvidenceStatus("今天股市如何？", []), "");
-  assert.equal(buildPreGenerationEvidenceStatus("你今天有練習嗎？", [{ toolName: "calendar" }]), "");
+test("per-turn evidence status covers only the active persona's current state", () => {
+  const status = buildPreGenerationEvidenceStatus("你今天有練習嗎？");
+  assert.match(status, /scope=active_persona_current_event_or_state/u);
+  assert.match(status, /trusted_current_turn_evidence=NONE_AT_GENERATION_START/u);
+  assert.match(status, /certainty=UNKNOWN/u);
+  assert.match(status, /wording_ownership=MODEL_AND_PERSONA/u);
+  assert.match(buildPreGenerationEvidenceStatus("@bot 今天到現在有練習嗎？"), /certainty=UNKNOWN/u);
+  assert.equal(buildPreGenerationEvidenceStatus("你現在想吃嗎？"), "");
+  assert.equal(buildPreGenerationEvidenceStatus("今天股市如何？"), "");
 });
 
-test("retry keeps the exact current prompt instead of the latest historical user turn", async () => {
+test("the current-turn evidence observer never requests a retry or rewrites the reply", async () => {
   const hooks = new Map();
   const api = {
     on(name, handler) { hooks.set(name, handler); },
@@ -132,54 +145,15 @@ test("retry keeps the exact current prompt instead of the latest historical user
     runId: "current-prompt-authority",
     sessionKey: "agent:tomori:discord:channel:test",
   };
-  const firstMessages = [
-    { role: "user", content: "燈，今天你有寫新的歌詞嗎？" },
-    { role: "assistant", content: "舊回答" },
-  ];
   hooks.get("before_prompt_build")({
     ...ctx,
     prompt: "燈，你今天有沒有寫下哪一句歌詞？",
-    messages: firstMessages,
+    messages: [{ role: "user", content: "燈，今天你有寫新的歌詞嗎？" }, { role: "assistant", content: "舊回答" }],
   }, ctx);
-  const revision = await hooks.get("before_agent_finalize")({
+  const result = await hooks.get("before_agent_finalize")({
     ...ctx,
     lastAssistantMessage: "我今天沒有寫新的歌詞。",
     messages: [{ role: "user", content: "燈，你今天有沒有寫下哪一句歌詞？" }],
   }, ctx);
-  assert.equal(revision.action, "revise");
-  const retryMessages = [{ role: "user", content: "燈，今天你有寫新的歌詞嗎？" }];
-  const retry = hooks.get("before_prompt_build")({
-    ...ctx,
-    prompt: revision.retry.instruction,
-    messages: retryMessages,
-  }, ctx);
-  assert.deepEqual(retryMessages, []);
-  assert.match(retry.appendContext, /current_request="燈，你今天有沒有寫下哪一句歌詞？"/u);
-  assert.doesNotMatch(retry.appendContext, /current_request="燈，今天你有寫新的歌詞嗎？"/u);
-});
-
-test("a verifier retry keeps a preference request even when ABSENT status does not apply", () => {
-  let hook;
-  registerTurnIsolation({
-    on(name, handler) { if (name === "before_prompt_build") hook = handler; },
-  });
-  const ctx = {
-    runId: "preference-retry-grounding",
-    sessionKey: "agent:main:discord:channel:test",
-  };
-  const firstMessages = [{ role: "user", content: "昨天的話題" }];
-  hook({
-    ...ctx,
-    prompt: "@bot 桌上有冰抹茶，你現在想喝嗎？",
-    messages: firstMessages,
-  }, ctx);
-  const retryMessages = [{ role: "user", content: "昨天的話題" }];
-  const retry = hook({
-    ...ctx,
-    prompt: "CURRENT-TURN EVIDENCE REVIEW（本輪唯一一次修正；不是回答模板）：",
-    messages: retryMessages,
-  }, ctx);
-  assert.deepEqual(retryMessages, []);
-  assert.match(retry.appendContext, /current_request="桌上有冰抹茶，你現在想喝嗎？"/u);
-  assert.doesNotMatch(retry.appendContext, /evidence_status=ABSENT/u);
+  assert.equal(result, undefined);
 });

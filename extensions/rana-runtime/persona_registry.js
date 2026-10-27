@@ -1,3 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The repo root (extensions/rana-runtime/../..). On the live install this is the
+// OpenClaw home, so the workspace paths below match the deployed layout.
+const OPENCLAW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
 const PERSONAS = {
   rana: {
     personaId: "rana",
@@ -16,7 +23,7 @@ const PERSONAS = {
       gradeClass: "三年 A 班",
       birthday: "2 月 22 日",
     }),
-    workspace: "C:\\Users\\Administrator\\.openclaw\\workspace",
+    workspace: path.join(OPENCLAW_ROOT, "workspace"),
     sourceOfTruth: "workspace/LORE/runtime/06_Rana_Character_Impressions.json",
     relationshipNamespace: "rana",
   },
@@ -37,7 +44,7 @@ const PERSONAS = {
       gradeClass: "一年 A 班",
       birthday: "11 月 22 日",
     }),
-    workspace: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\tomori",
+    workspace: path.join(OPENCLAW_ROOT, "workspace-bots", "tomori"),
     sourceOfTruth: "workspace-bots/tomori",
     relationshipNamespace: "tomori",
   },
@@ -58,7 +65,7 @@ const PERSONAS = {
       gradeClass: "一年 A 班",
       birthday: "9 月 8 日",
     }),
-    workspace: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\anon",
+    workspace: path.join(OPENCLAW_ROOT, "workspace-bots", "anon"),
     sourceOfTruth: "workspace-bots/anon",
     relationshipNamespace: "anon",
   },
@@ -79,7 +86,7 @@ const PERSONAS = {
       gradeClass: "一年 A 班",
       birthday: "5 月 27 日",
     }),
-    workspace: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\soyo",
+    workspace: path.join(OPENCLAW_ROOT, "workspace-bots", "soyo"),
     sourceOfTruth: "workspace-bots/soyo",
     relationshipNamespace: "soyo",
   },
@@ -100,7 +107,7 @@ const PERSONAS = {
       gradeClass: "一年 B 班",
       birthday: "8 月 9 日",
     }),
-    workspace: "C:\\Users\\Administrator\\.openclaw\\workspace-bots\\taki",
+    workspace: path.join(OPENCLAW_ROOT, "workspace-bots", "taki"),
     sourceOfTruth: "workspace-bots/taki",
     relationshipNamespace: "taki",
   },

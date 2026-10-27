@@ -85,8 +85,10 @@ function assertPersonaContract(persona) {
 
 test("Case A: Core self identity answers only the current name", () => {
   const soul = fs.readFileSync(new URL("../../workspace/SOUL.md", import.meta.url), "utf8");
-  assert.match(soul, /沒有第二個目的就停/);
-  assert.match(soul, /不要為延續聊天追加邀請、反問、安慰或服務/);
+  assert.match(soul, /沒有第二個目的(?:就停|時自然停下)/);
+  // The stop rule moved from SOUL.md into PERSONA.json roleCore.stopRule.
+  const persona = JSON.parse(fs.readFileSync(new URL("../../workspace/PERSONA.json", import.meta.url), "utf8").replace(/^\uFEFF/u, ""));
+  assert.match(persona.roleCore.stopRule, /不為維持聊天追加邀請、反問或服務/);
   const context = __test.directSelfIdentityContext("@Rana 你是誰？");
   assert.match(context, /直接用第一人稱自然回答目前姓名/);
   assert.match(context, /不得主動補充作品、MyGO!!!!!、樂團、吉他手/);

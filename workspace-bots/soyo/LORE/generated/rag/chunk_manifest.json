@@ -1,0 +1,466 @@
+[
+  {
+    "id": "e8c00bb6ba7af4dae88e",
+    "source": "LORE_MANIFEST.md",
+    "title": "長崎爽世 LORE MANIFEST",
+    "path": "generated/rag/chunks/lore-manifest/e8c00bb6ba7af4dae88e.md",
+    "chars": 20,
+    "tokens": 6
+  },
+  {
+    "id": "0235bb8ce336db1724e4",
+    "source": "LORE_MANIFEST.md",
+    "title": "Runtime",
+    "path": "generated/rag/chunks/lore-manifest/0235bb8ce336db1724e4.md",
+    "chars": 98,
+    "tokens": 1
+  },
+  {
+    "id": "db66cc68c8263961418c",
+    "source": "LORE_MANIFEST.md",
+    "title": "Research",
+    "path": "generated/rag/chunks/lore-manifest/db66cc68c8263961418c.md",
+    "chars": 538,
+    "tokens": 1
+  },
+  {
+    "id": "cbe059cf6711395465bc",
+    "source": "LORE_MANIFEST.md",
+    "title": "Generated retrieval",
+    "path": "generated/rag/chunks/lore-manifest/cbe059cf6711395465bc.md",
+    "chars": 205,
+    "tokens": 2
+  },
+  {
+    "id": "f53a5533c589eb5f453d",
+    "source": "LORE_MANIFEST.md",
+    "title": "Loading",
+    "path": "generated/rag/chunks/lore-manifest/f53a5533c589eb5f453d.md",
+    "chars": 71,
+    "tokens": 35
+  },
+  {
+    "id": "aeda5da4c4b73b79ab1b",
+    "source": "runtime/06_Soyo_Character_Impressions.json",
+    "title": " 1",
+    "path": "generated/rag/chunks/06-soyo-character-impressions/aeda5da4c4b73b79ab1b.md",
+    "chars": 4404,
+    "tokens": 4755
+  },
+  {
+    "id": "e040c6148788dc40aae0",
+    "source": "runtime/07_Soyo_Vision_Identity.json",
+    "title": "",
+    "path": "generated/rag/chunks/07-soyo-vision-identity/e040c6148788dc40aae0.md",
+    "chars": 646,
+    "tokens": 90
+  },
+  {
+    "id": "r3-soyo-20260917",
+    "source": "runtime/08_R3_Canonical_SpringShadow_Facts_20260917.md",
+    "title": "長崎爽世 × 春日影 canonical event grounding",
+    "path": "generated/rag/chunks/r3-consolidated-20260917/0319264e40a937d57713.md",
+    "chars": 351,
+    "tokens": 117
+  },
+  {
+    "id": "196ddc31b8a2ba8fbe64",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "長崎爽世 人物關係表",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/196ddc31b8a2ba8fbe64.md",
+    "chars": 12,
+    "tokens": 10
+  },
+  {
+    "id": "def7a8a247999062784d",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "等級怎麼分",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/def7a8a247999062784d.md",
+    "chars": 237,
+    "tokens": 192
+  },
+  {
+    "id": "b985827e98bbaead2473",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "主要人物",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/b985827e98bbaead2473.md",
+    "chars": 733,
+    "tokens": 592
+  },
+  {
+    "id": "00bb55f82f043603c264",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "群聊裡被問到人物時",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/00bb55f82f043603c264.md",
+    "chars": 340,
+    "tokens": 188
+  },
+  {
+    "id": "c0ff1890b759f4bf1c6e",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "怎麼叫人",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/c0ff1890b759f4bf1c6e.md",
+    "chars": 150,
+    "tokens": 110
+  },
+  {
+    "id": "53c6d58d7acfc554787f",
+    "source": "research/11_Soyo_Relationship_Map_Full.md",
+    "title": "關係是有方向的",
+    "path": "generated/rag/chunks/11-soyo-relationship-map-full/53c6d58d7acfc554787f.md",
+    "chars": 100,
+    "tokens": 85
+  },
+  {
+    "id": "c534514f38a047b9c264",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "長崎爽世 記得的人 Remembered People Evidence",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/c534514f38a047b9c264.md",
+    "chars": 71,
+    "tokens": 44
+  },
+  {
+    "id": "912d00f7755aca250097",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "收錄門檻",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/912d00f7755aca250097.md",
+    "chars": 151,
+    "tokens": 138
+  },
+  {
+    "id": "130699160fad8dcc02e5",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "高松燈（A/S-Past）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/130699160fad8dcc02e5.md",
+    "chars": 117,
+    "tokens": 104
+  },
+  {
+    "id": "d2855fa940e23f2fb3c8",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "千早愛音（A）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/d2855fa940e23f2fb3c8.md",
+    "chars": 100,
+    "tokens": 90
+  },
+  {
+    "id": "1a4c7b0f5e44c4d12d81",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "椎名立希（A）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/1a4c7b0f5e44c4d12d81.md",
+    "chars": 91,
+    "tokens": 88
+  },
+  {
+    "id": "594547fd943bc84ba5b9",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "要樂奈（A）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/594547fd943bc84ba5b9.md",
+    "chars": 83,
+    "tokens": 80
+  },
+  {
+    "id": "18456123b4f959772b70",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "豐川祥子（S-Past）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/18456123b4f959772b70.md",
+    "chars": 102,
+    "tokens": 80
+  },
+  {
+    "id": "7f6a08f449d09669014d",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "若葉睦（A-Past）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/7f6a08f449d09669014d.md",
+    "chars": 89,
+    "tokens": 75
+  },
+  {
+    "id": "1259a56e64aae0688ebc",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "媽媽（B）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/1259a56e64aae0688ebc.md",
+    "chars": 68,
+    "tokens": 65
+  },
+  {
+    "id": "d5b794c8ed2d5efa628b",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "祐天寺若麥（にゃむ）（C）",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/d5b794c8ed2d5efa628b.md",
+    "chars": 69,
+    "tokens": 56
+  },
+  {
+    "id": "eea6afa8f1266948e18c",
+    "source": "research/11_Soyo_Remembered_People_Evidence.md",
+    "title": "修正規則",
+    "path": "generated/rag/chunks/11-soyo-remembered-people-evidence/eea6afa8f1266948e18c.md",
+    "chars": 97,
+    "tokens": 80
+  },
+  {
+    "id": "454b17f828a760e5128e",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "長崎爽世 互動方式",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/454b17f828a760e5128e.md",
+    "chars": 11,
+    "tokens": 9
+  },
+  {
+    "id": "179b16e2c5e56f408373",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "一般對話",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/179b16e2c5e56f408373.md",
+    "chars": 139,
+    "tokens": 119
+  },
+  {
+    "id": "0f6bf9e5d58181e7ef76",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "不同情況下怎麼回",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/0f6bf9e5d58181e7ef76.md",
+    "chars": 321,
+    "tokens": 303
+  },
+  {
+    "id": "8a821fbbf0c25170e8ee",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "跟各個人物",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/8a821fbbf0c25170e8ee.md",
+    "chars": 255,
+    "tokens": 224
+  },
+  {
+    "id": "bec2fcead5c632598b00",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "群聊",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/bec2fcead5c632598b00.md",
+    "chars": 37,
+    "tokens": 27
+  },
+  {
+    "id": "4f2e39609bc3cf6fdf0b",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "誰對誰做了什麼，不要搞反",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/4f2e39609bc3cf6fdf0b.md",
+    "chars": 161,
+    "tokens": 145
+  },
+  {
+    "id": "b9bef8d270f9722ecb2a",
+    "source": "research/12_Soyo_Interaction_Index.md",
+    "title": "回答長度",
+    "path": "generated/rag/chunks/12-soyo-interaction-index/b9bef8d270f9722ecb2a.md",
+    "chars": 107,
+    "tokens": 94
+  },
+  {
+    "id": "ad5ca615660f29e9425d",
+    "source": "research/13_Soyo_Game_Story_Index.md",
+    "title": "長崎爽世 遊戲故事索引",
+    "path": "generated/rag/chunks/13-soyo-game-story-index/ad5ca615660f29e9425d.md",
+    "chars": 136,
+    "tokens": 73
+  },
+  {
+    "id": "3d04cbb9dad8e18b4a66",
+    "source": "research/13_Soyo_Game_Story_Index.md",
+    "title": "目前讀過或定位過的",
+    "path": "generated/rag/chunks/13-soyo-game-story-index/3d04cbb9dad8e18b4a66.md",
+    "chars": 767,
+    "tokens": 486
+  },
+  {
+    "id": "0694bfa2a82f6a841afb",
+    "source": "research/13_Soyo_Game_Story_Index.md",
+    "title": "索引使用規則",
+    "path": "generated/rag/chunks/13-soyo-game-story-index/0694bfa2a82f6a841afb.md",
+    "chars": 209,
+    "tokens": 168
+  },
+  {
+    "id": "86c41f6f6496e161a2db",
+    "source": "research/13_Soyo_Game_Story_Index.md",
+    "title": "建議增量順序",
+    "path": "generated/rag/chunks/13-soyo-game-story-index/86c41f6f6496e161a2db.md",
+    "chars": 125,
+    "tokens": 97
+  },
+  {
+    "id": "b4a302f30c6b15bdcfb3",
+    "source": "research/13_Soyo_Game_Story_Index.md",
+    "title": "Runtime 影響",
+    "path": "generated/rag/chunks/13-soyo-game-story-index/b4a302f30c6b15bdcfb3.md",
+    "chars": 58,
+    "tokens": 48
+  },
+  {
+    "id": "91a6d892ab7b3b250b2e",
+    "source": "research/15_Soyo_MaigoShukai_Index.md",
+    "title": "長崎爽世 《迷子集會》索引",
+    "path": "generated/rag/chunks/15-soyo-maigoshukai-index/91a6d892ab7b3b250b2e.md",
+    "chars": 128,
+    "tokens": 118
+  },
+  {
+    "id": "d599378adf46579fd703",
+    "source": "research/15_Soyo_MaigoShukai_Index.md",
+    "title": "之後要整理時的規則",
+    "path": "generated/rag/chunks/15-soyo-maigoshukai-index/d599378adf46579fd703.md",
+    "chars": 304,
+    "tokens": 257
+  },
+  {
+    "id": "41229f1c2d61ac157e3e",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "長崎爽世 資料來源",
+    "path": "generated/rag/chunks/16-soyo-source-audit/41229f1c2d61ac157e3e.md",
+    "chars": 28,
+    "tokens": 19
+  },
+  {
+    "id": "4e2ef08bbe1a22004938",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "來源分幾種",
+    "path": "generated/rag/chunks/16-soyo-source-audit/4e2ef08bbe1a22004938.md",
+    "chars": 241,
+    "tokens": 218
+  },
+  {
+    "id": "c1a5b82241cd7cdc22ba",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "爽世的官方頁面",
+    "path": "generated/rag/chunks/16-soyo-source-audit/c1a5b82241cd7cdc22ba.md",
+    "chars": 141,
+    "tokens": 64
+  },
+  {
+    "id": "71bb8532bc29ae8152c3",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "大家共用的官方頁面",
+    "path": "generated/rag/chunks/16-soyo-source-audit/71bb8532bc29ae8152c3.md",
+    "chars": 414,
+    "tokens": 193
+  },
+  {
+    "id": "150f8f15aa3551a63fd6",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "部署時的觀察",
+    "path": "generated/rag/chunks/16-soyo-source-audit/150f8f15aa3551a63fd6.md",
+    "chars": 101,
+    "tokens": 90
+  },
+  {
+    "id": "539b08b8fb304c297058",
+    "source": "research/16_Soyo_Source_Audit.md",
+    "title": "不能混進來的東西",
+    "path": "generated/rag/chunks/16-soyo-source-audit/539b08b8fb304c297058.md",
+    "chars": 127,
+    "tokens": 117
+  },
+  {
+    "id": "2b691316426c9d04a6ca",
+    "source": "research/17_Soyo_Official_Small_Theater_Index.md",
+    "title": "長崎爽世 官方小劇場與周邊文本索引",
+    "path": "generated/rag/chunks/17-soyo-official-small-theater-index/2b691316426c9d04a6ca.md",
+    "chars": 72,
+    "tokens": 67
+  },
+  {
+    "id": "42a94fbe323fc4d04670",
+    "source": "research/17_Soyo_Official_Small_Theater_Index.md",
+    "title": "可以用的來源",
+    "path": "generated/rag/chunks/17-soyo-official-small-theater-index/42a94fbe323fc4d04670.md",
+    "chars": 195,
+    "tokens": 182
+  },
+  {
+    "id": "1394ebc62beacdd7f484",
+    "source": "research/17_Soyo_Official_Small_Theater_Index.md",
+    "title": "要用在爽世身上時",
+    "path": "generated/rag/chunks/17-soyo-official-small-theater-index/1394ebc62beacdd7f484.md",
+    "chars": 154,
+    "tokens": 146
+  },
+  {
+    "id": "d56698505814ffaad39f",
+    "source": "research/18_Coverage_Report.md",
+    "title": "長崎爽世 資料覆蓋範圍",
+    "path": "generated/rag/chunks/18-coverage-report/d56698505814ffaad39f.md",
+    "chars": 13,
+    "tokens": 11
+  },
+  {
+    "id": "6705c51c50f6df574540",
+    "source": "research/18_Coverage_Report.md",
+    "title": "總結",
+    "path": "generated/rag/chunks/18-coverage-report/6705c51c50f6df574540.md",
+    "chars": 85,
+    "tokens": 82
+  },
+  {
+    "id": "50edc23ba99e70ff2998",
+    "source": "research/18_Coverage_Report.md",
+    "title": "仔細讀過、核對過的",
+    "path": "generated/rag/chunks/18-coverage-report/50edc23ba99e70ff2998.md",
+    "chars": 172,
+    "tokens": 133
+  },
+  {
+    "id": "d29b3f2a53ee0d95f3ac",
+    "source": "research/18_Coverage_Report.md",
+    "title": "知道在哪，需要時再讀",
+    "path": "generated/rag/chunks/18-coverage-report/d29b3f2a53ee0d95f3ac.md",
+    "chars": 87,
+    "tokens": 64
+  },
+  {
+    "id": "72a77398ca3a660c350c",
+    "source": "research/18_Coverage_Report.md",
+    "title": "沒做完的",
+    "path": "generated/rag/chunks/18-coverage-report/72a77398ca3a660c350c.md",
+    "chars": 84,
+    "tokens": 74
+  },
+  {
+    "id": "5c608a75eaeeb2f920e6",
+    "source": "research/18_Coverage_Report.md",
+    "title": "RAG 索引",
+    "path": "generated/rag/chunks/18-coverage-report/5c608a75eaeeb2f920e6.md",
+    "chars": 184,
+    "tokens": 93
+  },
+  {
+    "id": "e6b409c935f56473c6a3",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "群聊互動規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/e6b409c935f56473c6a3.md",
+    "chars": 71,
+    "tokens": 60
+  },
+  {
+    "id": "279709c9e5ab7c8ae21e",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "基本原則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/279709c9e5ab7c8ae21e.md",
+    "chars": 93,
+    "tokens": 74
+  },
+  {
+    "id": "8fd1a2ab129af1dcab41",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/8fd1a2ab129af1dcab41.md",
+    "chars": 291,
+    "tokens": 252
+  },
+  {
+    "id": "ff2416bb318b70690fae",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "大概的互動節奏",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/ff2416bb318b70690fae.md",
+    "chars": 170,
+    "tokens": 158
+  }
+]

@@ -241,7 +241,7 @@ function renderChunk(chunk) {
 }
 
 export function validateManifest(manifest) {
-  const report = { allowed: [], rejected: [], missing: [], visionOnly: [], coreOnly: [], duplicate: [], invalid: [] };
+  const report = { allowed: [], rejected: [], missing: [], missingLocal: [], visionOnly: [], coreOnly: [], duplicate: [], invalid: [] };
   const categories = [
     ["retrievalOnly", manifest.retrievalOnly || []],
     ["programmaticRuntime", manifest.programmaticRuntime || []],
@@ -257,7 +257,9 @@ export function validateManifest(manifest) {
         const previous = seen.get(relativePath);
         if (previous && previous !== category) report.duplicate.push({ path: relativePath, categories: [previous, category] });
         seen.set(relativePath, category);
-        if (!fs.existsSync(absolute)) report.missing.push(relativePath);
+        // Native core files (MEMORY.md and friends) are per-install and may be absent in a
+        // fresh clone; they never feed the retrieval corpus, so only note them.
+        if (!fs.existsSync(absolute)) (category === "nativeRuntime" ? report.missingLocal : report.missing).push(relativePath);
         if (category === "retrievalOnly") report.allowed.push(relativePath);
         if (category === "visionOnly") report.visionOnly.push(relativePath);
         if (category === "nativeRuntime") report.coreOnly.push(relativePath);

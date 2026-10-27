@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
@@ -12,6 +13,25 @@ import * as preDispatch from "./architecture/pre_dispatch.js";
 import * as turnIsolation from "./architecture/turn_isolation.js";
 import { buildUnifiedTurnPlan } from "./architecture/turn_plan.js";
 import * as music from "../rana-music-tools/tools/music.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const OPENCLAW_DIST = process.env.OPENCLAW_DIST
+  || join(process.env.APPDATA ?? join(process.env.HOME ?? "", "AppData", "Roaming"), "npm", "node_modules", "openclaw", "dist");
+
+// OpenClaw's dist chunks are content-hashed, so find the session reader by
+// prefix and its minified export name from the export list.
+function installedSessionReader() {
+  try {
+    const name = readdirSync(OPENCLAW_DIST).find((file) => /^session-utils\.fs-.*\.js$/u.test(file));
+    if (!name) return null;
+    const file = join(OPENCLAW_DIST, name);
+    const alias = readFileSync(file, "utf8").match(/\breadSessionMessagesAsync as (\w+)/u)?.[1];
+    return alias ? { file, alias } : null;
+  } catch {
+    return null;
+  }
+}
+const SESSION_READER = installedSessionReader();
 
 let requesterSequence = 0;
 
@@ -249,7 +269,7 @@ test("V3 current turn: before_agent_reply carries previous user text into known-
   assert.equal(secondDecision.turnPlan.utteranceAct?.continuationMode, "known_people_inventory_followup");
   assert.notEqual(secondDecision.turnPlan.subject?.type, "scene");
 
-  const preDispatchSource = readFileSync(join(resolve("extensions/rana-runtime"), "architecture", "pre_dispatch.js"), "utf8");
+  const preDispatchSource = readFileSync(join(HERE, "architecture", "pre_dispatch.js"), "utf8");
   assert.match(
     preDispatchSource,
     /const turnPlan = buildUnifiedTurnPlan\(routeText, \{[\s\S]*?previousUserText:\s*rememberedContext\?\.previousUserText\s*\|\|\s*""[\s\S]*?\}\);/u,
@@ -427,24 +447,18 @@ test("V3 current turn: transport-only mention cannot retain a prior conversation
   assert.equal(turnIsolation.__test.stripTransportAddress(snapshot.source_text), "");
 });
 
-test("existing session lifecycle treats a missing indexed backing file as no readable history", async () => {
-  const storePath = resolve("agents/main/sessions/sessions.json");
-  const store = JSON.parse(readFileSync(storePath, "utf8"));
+test("existing session lifecycle treats a missing indexed backing file as no readable history", {
+  skip: SESSION_READER ? false : "needs the OpenClaw host install (dist/session-utils.fs-*.js)",
+}, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rana-session-index-"));
+  const storePath = join(dir, "sessions.json");
   const key = "agent:main:discord:channel:900000000000000007";
-  const entry = store[key];
-  assert.ok(entry, `missing expected session index entry: ${key}`);
+  const entry = { sessionId: randomUUID(), sessionFile: join(dir, "missing-transcript.jsonl") };
+  writeFileSync(storePath, JSON.stringify({ [key]: entry }), "utf8");
   assert.equal(existsSync(entry.sessionFile), false);
 
-  const corePath = join(
-    process.env.APPDATA ?? "C:\\Users\\Administrator\\AppData\\Roaming",
-    "npm",
-    "node_modules",
-    "openclaw",
-    "dist",
-    "session-utils.fs-CR-Ydxz0.js",
-  );
-  assert.equal(existsSync(corePath), true, `missing installed lifecycle reader: ${corePath}`);
-  const { u: readSessionMessagesAsync } = await import(pathToFileURL(corePath).href);
+  const readSessionMessagesAsync = (await import(pathToFileURL(SESSION_READER.file).href))[SESSION_READER.alias];
+  assert.equal(typeof readSessionMessagesAsync, "function");
   const messages = await readSessionMessagesAsync(
     entry.sessionId,
     storePath,

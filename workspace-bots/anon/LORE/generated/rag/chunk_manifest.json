@@ -1,0 +1,458 @@
+[
+  {
+    "id": "25e70c82d6fe461a1455",
+    "source": "LORE_MANIFEST.md",
+    "title": "千早愛音 LORE MANIFEST",
+    "path": "generated/rag/chunks/lore-manifest/25e70c82d6fe461a1455.md",
+    "chars": 20,
+    "tokens": 6
+  },
+  {
+    "id": "1ab7707159f10d11b9cf",
+    "source": "LORE_MANIFEST.md",
+    "title": "Runtime",
+    "path": "generated/rag/chunks/lore-manifest/1ab7707159f10d11b9cf.md",
+    "chars": 98,
+    "tokens": 1
+  },
+  {
+    "id": "a91817f0ceb522bad2b0",
+    "source": "LORE_MANIFEST.md",
+    "title": "Research",
+    "path": "generated/rag/chunks/lore-manifest/a91817f0ceb522bad2b0.md",
+    "chars": 538,
+    "tokens": 1
+  },
+  {
+    "id": "cbe059cf6711395465bc",
+    "source": "LORE_MANIFEST.md",
+    "title": "Generated retrieval",
+    "path": "generated/rag/chunks/lore-manifest/cbe059cf6711395465bc.md",
+    "chars": 205,
+    "tokens": 2
+  },
+  {
+    "id": "f53a5533c589eb5f453d",
+    "source": "LORE_MANIFEST.md",
+    "title": "Loading",
+    "path": "generated/rag/chunks/lore-manifest/f53a5533c589eb5f453d.md",
+    "chars": 71,
+    "tokens": 35
+  },
+  {
+    "id": "405968500a764e75b4b0",
+    "source": "runtime/06_Anon_Character_Impressions.json",
+    "title": " 1",
+    "path": "generated/rag/chunks/06-anon-character-impressions/405968500a764e75b4b0.md",
+    "chars": 3956,
+    "tokens": 3854
+  },
+  {
+    "id": "1e4c214019cd9fca1a7a",
+    "source": "runtime/07_Anon_Vision_Identity.json",
+    "title": "",
+    "path": "generated/rag/chunks/07-anon-vision-identity/1e4c214019cd9fca1a7a.md",
+    "chars": 646,
+    "tokens": 90
+  },
+  {
+    "id": "r3-anon-20260917",
+    "source": "runtime/08_R3_Canonical_Profile_Facts_20260917.md",
+    "title": "千早愛音 canonical profile preferences 喜歡 不喜歡 興趣",
+    "path": "generated/rag/chunks/r3-consolidated-20260917/2d1592d6b350a24832e5.md",
+    "chars": 248,
+    "tokens": 82
+  },
+  {
+    "id": "38eddfcd227364bd28ea",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "千早愛音 人物關係表",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/38eddfcd227364bd28ea.md",
+    "chars": 12,
+    "tokens": 10
+  },
+  {
+    "id": "717e881a6b802d76d858",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "等級怎麼分",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/717e881a6b802d76d858.md",
+    "chars": 201,
+    "tokens": 163
+  },
+  {
+    "id": "af688cf77ef25206c829",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "主要人物",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/af688cf77ef25206c829.md",
+    "chars": 665,
+    "tokens": 521
+  },
+  {
+    "id": "dc11a5dae75558db38ce",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "群聊裡被問到人物時",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/dc11a5dae75558db38ce.md",
+    "chars": 340,
+    "tokens": 188
+  },
+  {
+    "id": "dc291bad5f55a4394da2",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "怎麼叫人",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/dc291bad5f55a4394da2.md",
+    "chars": 158,
+    "tokens": 100
+  },
+  {
+    "id": "f6ffcb21fb9449810e25",
+    "source": "research/11_Anon_Relationship_Map_Full.md",
+    "title": "關係是有方向的",
+    "path": "generated/rag/chunks/11-anon-relationship-map-full/f6ffcb21fb9449810e25.md",
+    "chars": 100,
+    "tokens": 85
+  },
+  {
+    "id": "a24dfc4b3667055135ba",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "千早愛音 記得的人 Remembered People Evidence",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/a24dfc4b3667055135ba.md",
+    "chars": 71,
+    "tokens": 44
+  },
+  {
+    "id": "3d7383adadbba9896fb3",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "收錄門檻",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/3d7383adadbba9896fb3.md",
+    "chars": 151,
+    "tokens": 138
+  },
+  {
+    "id": "fad20a0b48f0ed055346",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "高松燈（S/A）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/fad20a0b48f0ed055346.md",
+    "chars": 101,
+    "tokens": 91
+  },
+  {
+    "id": "1196089bec2cc8c5e34f",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "椎名立希（A）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/1196089bec2cc8c5e34f.md",
+    "chars": 80,
+    "tokens": 77
+  },
+  {
+    "id": "24437799043509c8c422",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "長崎爽世（A）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/24437799043509c8c422.md",
+    "chars": 107,
+    "tokens": 85
+  },
+  {
+    "id": "e96c16739a07c84de38d",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "要樂奈（A）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/e96c16739a07c84de38d.md",
+    "chars": 86,
+    "tokens": 83
+  },
+  {
+    "id": "6c405a1a97e196a01d4e",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "祐天寺若麥（にゃむ）（B/C）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/6c405a1a97e196a01d4e.md",
+    "chars": 78,
+    "tokens": 66
+  },
+  {
+    "id": "2e879ed0648b755f213d",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "豐川祥子（C/B）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/2e879ed0648b755f213d.md",
+    "chars": 96,
+    "tokens": 75
+  },
+  {
+    "id": "fc3d68c813733e4e3ddf",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "若葉睦（C）",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/fc3d68c813733e4e3ddf.md",
+    "chars": 65,
+    "tokens": 46
+  },
+  {
+    "id": "b39b2e244a4673a523d9",
+    "source": "research/11_Anon_Remembered_People_Evidence.md",
+    "title": "修正規則",
+    "path": "generated/rag/chunks/11-anon-remembered-people-evidence/b39b2e244a4673a523d9.md",
+    "chars": 97,
+    "tokens": 80
+  },
+  {
+    "id": "8932da6c287c43a319b9",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "千早愛音 互動方式",
+    "path": "generated/rag/chunks/12-anon-interaction-index/8932da6c287c43a319b9.md",
+    "chars": 11,
+    "tokens": 9
+  },
+  {
+    "id": "8de8f7f4e3e2b1e1668f",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "一般對話",
+    "path": "generated/rag/chunks/12-anon-interaction-index/8de8f7f4e3e2b1e1668f.md",
+    "chars": 139,
+    "tokens": 119
+  },
+  {
+    "id": "946b958df0cee765572c",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "不同情況下怎麼回",
+    "path": "generated/rag/chunks/12-anon-interaction-index/946b958df0cee765572c.md",
+    "chars": 319,
+    "tokens": 302
+  },
+  {
+    "id": "fc0c5c84a365ccd807c2",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "跟各個人物",
+    "path": "generated/rag/chunks/12-anon-interaction-index/fc0c5c84a365ccd807c2.md",
+    "chars": 210,
+    "tokens": 175
+  },
+  {
+    "id": "47be9d88a3888f89dfc1",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "群聊",
+    "path": "generated/rag/chunks/12-anon-interaction-index/47be9d88a3888f89dfc1.md",
+    "chars": 37,
+    "tokens": 27
+  },
+  {
+    "id": "d59f571ee32e5a7721a4",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "誰對誰做了什麼，不要搞反",
+    "path": "generated/rag/chunks/12-anon-interaction-index/d59f571ee32e5a7721a4.md",
+    "chars": 161,
+    "tokens": 145
+  },
+  {
+    "id": "98d01cfe34c17c5cf86b",
+    "source": "research/12_Anon_Interaction_Index.md",
+    "title": "回答長度",
+    "path": "generated/rag/chunks/12-anon-interaction-index/98d01cfe34c17c5cf86b.md",
+    "chars": 107,
+    "tokens": 94
+  },
+  {
+    "id": "74fbd599f832ef269cda",
+    "source": "research/13_Anon_Game_Story_Index.md",
+    "title": "千早愛音 遊戲故事索引",
+    "path": "generated/rag/chunks/13-anon-game-story-index/74fbd599f832ef269cda.md",
+    "chars": 136,
+    "tokens": 73
+  },
+  {
+    "id": "019c51e6d05fb210b27b",
+    "source": "research/13_Anon_Game_Story_Index.md",
+    "title": "目前讀過或定位過的",
+    "path": "generated/rag/chunks/13-anon-game-story-index/019c51e6d05fb210b27b.md",
+    "chars": 797,
+    "tokens": 502
+  },
+  {
+    "id": "f7fd49ad6d0fea2fc630",
+    "source": "research/13_Anon_Game_Story_Index.md",
+    "title": "索引使用規則",
+    "path": "generated/rag/chunks/13-anon-game-story-index/f7fd49ad6d0fea2fc630.md",
+    "chars": 209,
+    "tokens": 168
+  },
+  {
+    "id": "b3d06099b8d713d02a5c",
+    "source": "research/13_Anon_Game_Story_Index.md",
+    "title": "建議增量順序",
+    "path": "generated/rag/chunks/13-anon-game-story-index/b3d06099b8d713d02a5c.md",
+    "chars": 125,
+    "tokens": 97
+  },
+  {
+    "id": "080d1431711273606b34",
+    "source": "research/13_Anon_Game_Story_Index.md",
+    "title": "Runtime 影響",
+    "path": "generated/rag/chunks/13-anon-game-story-index/080d1431711273606b34.md",
+    "chars": 58,
+    "tokens": 48
+  },
+  {
+    "id": "d3e15c66bf2ce073f019",
+    "source": "research/15_Anon_MaigoShukai_Index.md",
+    "title": "千早愛音 《迷子集會》索引",
+    "path": "generated/rag/chunks/15-anon-maigoshukai-index/d3e15c66bf2ce073f019.md",
+    "chars": 128,
+    "tokens": 118
+  },
+  {
+    "id": "28fb18d712bd08ef4fcc",
+    "source": "research/15_Anon_MaigoShukai_Index.md",
+    "title": "之後要整理時的規則",
+    "path": "generated/rag/chunks/15-anon-maigoshukai-index/28fb18d712bd08ef4fcc.md",
+    "chars": 304,
+    "tokens": 257
+  },
+  {
+    "id": "baff51c845c59b72607e",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "千早愛音 資料來源",
+    "path": "generated/rag/chunks/16-anon-source-audit/baff51c845c59b72607e.md",
+    "chars": 28,
+    "tokens": 19
+  },
+  {
+    "id": "23caa281aeb72f3f3d47",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "來源分幾種",
+    "path": "generated/rag/chunks/16-anon-source-audit/23caa281aeb72f3f3d47.md",
+    "chars": 241,
+    "tokens": 218
+  },
+  {
+    "id": "cc60e32518b01e797d43",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "愛音的官方頁面",
+    "path": "generated/rag/chunks/16-anon-source-audit/cc60e32518b01e797d43.md",
+    "chars": 140,
+    "tokens": 64
+  },
+  {
+    "id": "c70efa25be8f809d6563",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "大家共用的官方頁面",
+    "path": "generated/rag/chunks/16-anon-source-audit/c70efa25be8f809d6563.md",
+    "chars": 414,
+    "tokens": 193
+  },
+  {
+    "id": "41eda41739c76921bc1e",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "部署時的觀察",
+    "path": "generated/rag/chunks/16-anon-source-audit/41eda41739c76921bc1e.md",
+    "chars": 99,
+    "tokens": 88
+  },
+  {
+    "id": "4162d45cf561255446b5",
+    "source": "research/16_Anon_Source_Audit.md",
+    "title": "不能混進來的東西",
+    "path": "generated/rag/chunks/16-anon-source-audit/4162d45cf561255446b5.md",
+    "chars": 127,
+    "tokens": 117
+  },
+  {
+    "id": "57aacfd6aab3a52efe11",
+    "source": "research/17_Anon_Official_Small_Theater_Index.md",
+    "title": "千早愛音 官方小劇場與周邊文本索引",
+    "path": "generated/rag/chunks/17-anon-official-small-theater-index/57aacfd6aab3a52efe11.md",
+    "chars": 72,
+    "tokens": 67
+  },
+  {
+    "id": "ccd8cd371247fb6ae076",
+    "source": "research/17_Anon_Official_Small_Theater_Index.md",
+    "title": "可以用的來源",
+    "path": "generated/rag/chunks/17-anon-official-small-theater-index/ccd8cd371247fb6ae076.md",
+    "chars": 195,
+    "tokens": 182
+  },
+  {
+    "id": "e79fcb14d28fbde97213",
+    "source": "research/17_Anon_Official_Small_Theater_Index.md",
+    "title": "要用在愛音身上時",
+    "path": "generated/rag/chunks/17-anon-official-small-theater-index/e79fcb14d28fbde97213.md",
+    "chars": 154,
+    "tokens": 146
+  },
+  {
+    "id": "5de9a3553e36d4ba930a",
+    "source": "research/18_Coverage_Report.md",
+    "title": "千早愛音 資料覆蓋範圍",
+    "path": "generated/rag/chunks/18-coverage-report/5de9a3553e36d4ba930a.md",
+    "chars": 13,
+    "tokens": 11
+  },
+  {
+    "id": "6705c51c50f6df574540",
+    "source": "research/18_Coverage_Report.md",
+    "title": "總結",
+    "path": "generated/rag/chunks/18-coverage-report/6705c51c50f6df574540.md",
+    "chars": 85,
+    "tokens": 82
+  },
+  {
+    "id": "b45ef21f900238c2ca2b",
+    "source": "research/18_Coverage_Report.md",
+    "title": "仔細讀過、核對過的",
+    "path": "generated/rag/chunks/18-coverage-report/b45ef21f900238c2ca2b.md",
+    "chars": 177,
+    "tokens": 135
+  },
+  {
+    "id": "d26340b73f6ec3ec4065",
+    "source": "research/18_Coverage_Report.md",
+    "title": "知道在哪，需要時再讀",
+    "path": "generated/rag/chunks/18-coverage-report/d26340b73f6ec3ec4065.md",
+    "chars": 82,
+    "tokens": 62
+  },
+  {
+    "id": "3b449a4f22477990c0e1",
+    "source": "research/18_Coverage_Report.md",
+    "title": "沒做完的",
+    "path": "generated/rag/chunks/18-coverage-report/3b449a4f22477990c0e1.md",
+    "chars": 84,
+    "tokens": 74
+  },
+  {
+    "id": "5c608a75eaeeb2f920e6",
+    "source": "research/18_Coverage_Report.md",
+    "title": "RAG 索引",
+    "path": "generated/rag/chunks/18-coverage-report/5c608a75eaeeb2f920e6.md",
+    "chars": 184,
+    "tokens": 93
+  },
+  {
+    "id": "e6b409c935f56473c6a3",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "群聊互動規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/e6b409c935f56473c6a3.md",
+    "chars": 71,
+    "tokens": 60
+  },
+  {
+    "id": "279709c9e5ab7c8ae21e",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "基本原則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/279709c9e5ab7c8ae21e.md",
+    "chars": 93,
+    "tokens": 74
+  },
+  {
+    "id": "8fd1a2ab129af1dcab41",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "規則",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/8fd1a2ab129af1dcab41.md",
+    "chars": 291,
+    "tokens": 252
+  },
+  {
+    "id": "ff2416bb318b70690fae",
+    "source": "research/20_Group_Interaction_Protocol.md",
+    "title": "大概的互動節奏",
+    "path": "generated/rag/chunks/20-group-interaction-protocol/ff2416bb318b70690fae.md",
+    "chars": 170,
+    "tokens": 158
+  }
+]

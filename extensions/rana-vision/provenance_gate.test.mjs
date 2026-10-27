@@ -46,10 +46,21 @@ test("verified replied image remains an API-backed source", () => {
   const request = guidanceTest.imageRequest([
     '"chat_id": "channel:900000000000000009"',
     '"reply_to_id": "900000000000000011"',
-    '"body": "<media:image> (1 image)"',
+    '"body": "這是誰？"',
+    '"has_reply_context": true',
   ].join("\n"));
   assert.equal(request?.sourceType, "discord_reply");
   assert.equal(request?.sourceMessageId, "900000000000000011");
+});
+
+test("a replied image without explicit Vision intent does not start Vision", () => {
+  // An attachment is data, not permission to run Vision.
+  const request = guidanceTest.imageRequest([
+    '"chat_id": "channel:900000000000000009"',
+    '"reply_to_id": "900000000000000011"',
+    '"body": "<media:image> (1 image)"',
+  ].join("\n"));
+  assert.equal(request, null);
 });
 
 test("generated or YouTube preview staged as jpg is not inbound user media", () => {

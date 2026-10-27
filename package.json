@@ -1,0 +1,12 @@
+{
+  "name": "rana-ai-agent",
+  "private": true,
+  "description": "OpenClaw plugins and persona workspaces for five MyGO!!!!! Discord bots",
+  "scripts": {
+    "setup": "npm ci --prefix extensions/rana-runtime && node scripts/sync_lore_rag.mjs",
+    "test": "node scripts/run_tests.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

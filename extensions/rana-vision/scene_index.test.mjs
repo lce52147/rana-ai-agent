@@ -250,6 +250,34 @@ test("pipeline: a likely scene may not add people the faces did not confirm (LIV
   assert.deepEqual(result.identity_resolution.detectedCharacters.map((c) => c.canonicalId), ["mutsumi"]);
 });
 
+function faceSeenNobodyNamed() {
+  return async () => ({
+    status: "ok",
+    source: "ccip_face_sidecar",
+    primary: null,
+    accepted: [],
+    targets: [{ face_id: "F1", kind: "face", box: [0, 0, 10, 10] }],
+  });
+}
+
+test("pipeline: a likely scene may not name people when a face was seen but nobody was confirmed", async () => {
+  const counter = { calls: 0 };
+  const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-face-unconfirmed", {
+    ...pipeline(likelyUmiri, counter),
+    localIdentity: faceSeenNobodyNamed(),
+  });
+  assert.equal(result.scene_lookup.accepted, false);
+  assert.equal(result.scene_lookup.reason, "face_identity_unconfirmed");
+  assert.notEqual(result.final_identity?.canonicalId, "umiri");
+});
+
+test("pipeline: a likely scene still names people when no face was found at all", async () => {
+  const counter = { calls: 0 };
+  const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-no-face", pipeline(likelyUmiri, counter));
+  assert.equal(result.scene_lookup.accepted, true);
+  assert.equal(result.final_identity.canonicalId, "umiri");
+});
+
 test("pipeline: unavailable scene lookup changes nothing", async () => {
   const counter = { calls: 0 };
   const result = await buildVisionEvidence(loaded, "這是誰", undefined, "scene-down", pipeline({

@@ -37,30 +37,10 @@ test("deterministic fallback gates only material unsupported state claims", () =
   assert.equal(preference.decision, "ACCEPT");
 });
 
-test("semantic boundary labels are telemetry only without material evidence violation", () => {
-  const parsed = isolation.parseVerifierJson(JSON.stringify({
-    decision: "REVISE",
-    boundary: "GENERIC_SERVICE",
-    evidenceStatus: "NO_MATERIAL_CLAIM",
-    claims: [],
-    reason: "assistant-like",
-  }));
-  assert.equal(parsed.decision, "ACCEPT");
-  assert.equal(parsed.boundary, "GENERIC_SERVICE");
-});
-
-test("retry instruction preserves Persona freedom and supplies no canned answer", () => {
-  const instruction = isolation.buildVerifierRetryInstruction({
-    evidenceStatus: "ABSENT",
-  }, { currentUser: "你今天有去練團嗎？" });
-  assert.match(instruction, /不是答案模板/u);
-  assert.match(instruction, /runtime 不提供標準句、固定措辭或 Persona-specific 答案/u);
-  assert.match(instruction, /active Persona／IDENTITY／SOUL/u);
-  assert.doesNotMatch(instruction, /要樂奈|高松燈|千早愛音|長崎爽世|椎名立希/u);
-  assert.doesNotMatch(instruction, /請回答「|固定回答/u);
-});
-
-test("native before_agent_finalize owns retries; runtime never cancels or rewrites delivery", async () => {
+// The LLM verifier and its retry instruction (parseVerifierJson,
+// buildVerifierRetryInstruction) were removed: the evidence audit above is now
+// telemetry only, and before_agent_finalize never asks for a retry.
+test("unsupported self-state claims are observed but never revised, cancelled or rewritten", async () => {
   const hooks = {};
   const api = { on(name, handler) { (hooks[name] ||= []).push(handler); } };
   registerCurrentTurnVerifier(api, { timeoutMs: 1000 });
@@ -69,7 +49,6 @@ test("native before_agent_finalize owns retries; runtime never cancels or rewrit
   const ctx = { runId, sessionKey, agentId: "soyo" };
 
   assert.equal(hooks.message_sending, undefined, "verifier must not own outbound delivery cancellation");
-  assert.equal(isolation.MAX_NATIVE_VERIFIER_REVISIONS, 2);
 
   hooks.llm_input[0]({
     runId,
@@ -77,34 +56,15 @@ test("native before_agent_finalize owns retries; runtime never cancels or rewrit
     historyMessages: [{ role: "user", content: "你今天有去練團嗎？" }],
   }, ctx);
 
-  const first = await hooks.before_agent_finalize[0]({
-    runId,
-    sessionKey,
-    lastAssistantMessage: "今天有去練團。",
-    messages: [],
-  }, ctx);
-  assert.equal(first.action, "revise");
-  assert.equal(first.retry.maxAttempts, 2);
-  assert.match(first.retry.idempotencyKey, /current-turn-evidence:v2/u);
-  assert.equal(Object.hasOwn(first, "content"), false);
-
-  const second = await hooks.before_agent_finalize[0]({
-    runId,
-    sessionKey,
-    lastAssistantMessage: "今天沒有去練團。",
-    messages: [],
-  }, ctx);
-  assert.equal(second.action, "revise");
-  assert.equal(second.retry.maxAttempts, 2);
-  assert.equal(second.retry.idempotencyKey, first.retry.idempotencyKey);
-
-  const third = await hooks.before_agent_finalize[0]({
-    runId,
-    sessionKey,
-    lastAssistantMessage: "今天有去練團。",
-    messages: [],
-  }, ctx);
-  assert.equal(third, undefined, "retry budget exhaustion must fall through to OpenClaw natural finalization");
+  for (const candidate of ["今天有去練團。", "今天沒有去練團。"]) {
+    const result = await hooks.before_agent_finalize[0]({
+      runId,
+      sessionKey,
+      lastAssistantMessage: candidate,
+      messages: [],
+    }, ctx);
+    assert.equal(result, undefined, candidate);
+  }
 });
 
 test("style-only semantic failure never requests revision", async () => {

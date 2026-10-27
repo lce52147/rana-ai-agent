@@ -9,14 +9,16 @@ test("outgoing language guard converts simplified Chinese to Taiwan Traditional 
   );
 });
 
-test("all four non-Rana bot outputs are converted at the outbound boundary", () => {
+// output_guard is observe-only (anti-cheat invariant): language is set by the
+// persona prompt, and the outbound boundary never rewrites model text.
+test("non-Rana bot outputs are not rewritten at the outbound boundary", () => {
   for (const botId of ["anon", "soyo", "taki", "tomori"]) {
-    assert.deepEqual(
+    assert.equal(
       guardOutgoingMessage(
         "如果燈卡住，我会先确认，再调整练习感觉。",
         { sessionKey: "agent:" + botId + ":language-guard-test" },
       ),
-      { content: "如果燈卡住，我會先確認，再調整練習感覺。" },
+      undefined,
       botId,
     );
   }

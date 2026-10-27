@@ -5,6 +5,7 @@ import { writeGenerationTrace } from "../architecture/generation_trace.js";
 import { insertMemory, isSensitiveMemoryText, isTransientMemoryText } from "./store.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+let sessionsRoot = ROOT;
 const DEFAULT_ENDPOINT = "http://127.0.0.1:6969/v1";
 const DEFAULT_MODEL = "OOGG";
 const TIMEOUT_MS = Math.max(500, Number(process.env.RANA_MEMORY_EXTRACTOR_TIMEOUT_MS || 8000));
@@ -78,12 +79,12 @@ function sessionTranscript(event, ctx) {
   const sessionKey = sessionKeyOf(event, ctx);
   const agentId = agentIdOf(event, ctx);
   if (!sessionKey || !agentId) return null;
-  const indexPath = path.join(ROOT, "agents", agentId, "sessions", "sessions.json");
+  const indexPath = path.join(sessionsRoot, "agents", agentId, "sessions", "sessions.json");
   try {
     const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
     const sessionId = String(index?.[sessionKey]?.sessionId || "").trim();
     if (!sessionId) return null;
-    const transcriptPath = path.join(ROOT, "agents", agentId, "sessions", `${sessionId}.jsonl`);
+    const transcriptPath = path.join(sessionsRoot, "agents", agentId, "sessions", `${sessionId}.jsonl`);
     if (!fs.existsSync(transcriptPath)) return null;
     return transcriptPath;
   } catch {
@@ -250,6 +251,7 @@ export function registerAutoMemoryExtraction(api) {
 }
 
 export const __test = {
+  setSessionsRoot(root) { sessionsRoot = root || ROOT; },
   collectTurn,
   normalizeCandidate,
   parseJson,

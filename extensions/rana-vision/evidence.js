@@ -333,14 +333,18 @@ function removeCanonicalIdentity(resolution, canonicalId) {
 // matched faces name none of that frame's people, the frame is a different shot; drop its line and names.
 // Same when the faces confirm only some of them (LIVE24 V01: 睦 + Mortis doll hit 「小祥與小睦拍手」 and the
 // frame's labels added 祥子): a near frame may only repeat names the faces already gave.
+// When the sidecar found a face but could name nobody, the face did not back the near frame either; only a
+// frame with no detected face at all (sticker crop, back view) may still take the near frame's names.
 function sceneAgreeingWithFaces(scene, localIdentityRetrieval) {
   if (scene?.accepted !== true || scene.tier === "exact") return scene;
   const faceIds = new Set((localIdentityRetrieval?.accepted || [])
     .filter((item) => item?.evidence === "ccip_face_open_set_accept")
     .map((item) => String(item?.id || "")));
   const labels = Array.isArray(scene.match?.labels) ? scene.match.labels : [];
-  if (!faceIds.size || !labels.length || labels.every((id) => faceIds.has(id))) return scene;
-  const reason = labels.some((id) => faceIds.has(id)) ? "face_identity_partial" : "face_identity_conflict";
+  const sawFace = (localIdentityRetrieval?.targets || []).some((target) => target?.kind === "face");
+  if (!labels.length || (!faceIds.size && !sawFace) || labels.every((id) => faceIds.has(id))) return scene;
+  const reason = !faceIds.size ? "face_identity_unconfirmed"
+    : labels.some((id) => faceIds.has(id)) ? "face_identity_partial" : "face_identity_conflict";
   return { ...scene, accepted: false, tier: null, reason, rejected_match: scene.match, match: null };
 }
 

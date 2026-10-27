@@ -65,10 +65,11 @@ test("persona stop rules structurally close generic service continuation", () =>
     const leakAvoid = packageData?.roleCore?.assistantLeakAvoid || [];
 
     assert.match(contract, /(?:普通問題完成後停止|普通.*直接回答|一般.*直接(?:回答|反應)|普通.*直接回答|沒有第二個目的就停)|ordinary (?:conversation|chat|replies?)/i);
-    assert.match(contract, /(?:直接回答|直接反應|先說當下|先以.*反應|先判斷|先對.*反應|先注意)|(?:answer|react) directly/i);
+    assert.match(contract, /(?:直接回答|直接反應|先說當下|先以.*反應|先判斷|先對.*反應|先注意|先抓.*再形成反應)|(?:answer|react) directly/i);
     assert.ok(
       /(?:停止|普通回答完成後停|不.*(?:客服|服務|重問|第二個問題)|不必維持客服|不要.*固定)/u.test(stopRule)
-        || /(?:不要|不得|禁止|never|do not).*(?:追加|邀請|客服|服務|延續聊天|assistant endings?|service)/i.test(contract),
+        || /(?:不要|不得|禁止|never|do not).*(?:追加|邀請|客服|服務|延續聊天|assistant endings?|service)/i.test(contract)
+        || /沒有第二個目的(?:就停|時自然停下)/u.test(contract),
       `${persona.id} lacks an active stop rule`,
     );
     if (packageData) {

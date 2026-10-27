@@ -1,5 +1,38 @@
 {
   "version": 2,
+  "parfait": {
+    "enabled": true,
+    "startCups": 3,
+    "cap": 30,
+    "boosterStartCups": 6,
+    "boosterBonusCups": 10,
+    "boosterCap": 60,
+    "dailyGrant": 1,
+    "textMinChars": 5,
+    "voiceMinSeconds": 1800,
+    "voiceMaxFlushSeconds": 900,
+    "streakDays": 7,
+    "streakBonus": 3,
+    "rememberPrice": 10,
+    "timeZone": "Asia/Taipei"
+  },
+  "gifts": {
+    "enabled": true,
+    "startCount": 0,
+    "cap": 30,
+    "dailyGrant": 1,
+    "textMinChars": 5,
+    "streakDays": 7,
+    "streakBonus": 3,
+    "exchangeRate": 1,
+    "timeZone": "Asia/Taipei",
+    "characters": {
+      "tomori": { "name": "企鵝貼紙", "unit": "張" },
+      "taki": { "name": "熊貓吊飾", "unit": "個" },
+      "soyo": { "name": "香水", "unit": "瓶" },
+      "anon": { "name": "手機吊飾", "unit": "個" }
+    }
+  },
   "fallbacks": [
     {
       "id": "chores",

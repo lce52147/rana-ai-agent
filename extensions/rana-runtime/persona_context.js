@@ -16,6 +16,7 @@ import { evaluatePremiseProvenance, premisePlanNeedsProtection } from "./archite
 import { registerPersonaToolCapabilityBinder, consumeTrustedPersonaToolContext } from "./architecture/persona_tool_capability.js";
 import { writeGenerationTrace } from "./architecture/generation_trace.js";
 import { modelFacingContext } from "./architecture/lean_prompt.js";
+import { buildIntimacyContext } from "./intimacy_context.js";
 
 const packageCache = new Map();
 
@@ -1487,6 +1488,13 @@ function compactOrdinaryPersonaTurn(plan) {
   return true;
 }
 
+// 抹茶芭菲 and gifts live only in the hot_tools ledger; the model must never fake a transfer or a balance.
+const CURRENCY_LEDGER_RULES = [
+  "CURRENCY_LEDGER_AUTHORITY=HOT_TOOLS_LEDGER_ONLY",
+  "CURRENCY_FAKE_TRANSACTION=DENY",
+  "CURRENCY_LEDGER_RULE=You cannot give, receive, trade, or change 抹茶芭菲 or any gift (企鵝貼紙, 熊貓, or others) by talking; only ledger commands do that, and they reply before you. Never say you handed some over, accepted some, or traded any, and never state anyone's count or balance unless a ledger result in this turn gives it. If someone asks you for some, refuse in character: they have to earn it themselves or use the exchange command (換). If someone says they gave you some, do not confirm receiving it.",
+];
+
 export function buildPersonaGenerationContext(event, ctx, planOverride = null) {
   // R3: Persona owns realization only. TurnPlan/R3_COMPILED_CONTRACT owns
   // propositions, assertion rights, response function and task/output shape.
@@ -1525,6 +1533,7 @@ export function buildPersonaGenerationContext(event, ctx, planOverride = null) {
       "SIMULATE_SCENE=DENY",
       "PARENTHETICAL_ROLEPLAY_ACTION=DENY",
       "GENERIC_SERVICE_TAIL=DENY",
+      ...CURRENCY_LEDGER_RULES,
       ...userLanguageContract(current),
       "Reply in the language used by the user; Japanese names, aliases, and canonical source wording do not require a Japanese reply. Honor any explicit language or translation request.",
     ].join("\n");
@@ -1552,6 +1561,7 @@ export function buildPersonaGenerationContext(event, ctx, planOverride = null) {
     "RESPONSE_CONTRACT_AUTHORITY=TURN_CONTEXT_R3_COMPILED_CONTRACT",
     "PERSONA_FACT_AUTHORITY=DENY",
     "PERSONA_MAY_OVERRIDE_ASSERTION_RIGHTS=false",
+    ...CURRENCY_LEDGER_RULES,
     "PERSONA_MAY_OVERRIDE_RESPONSE_FUNCTION=false",
     "PERSONA_MAY_OVERRIDE_TASK_RESPONSE_SHAPE=false",
     "PERSONA_MAY_ADD_NEW_PROPOSITIONS=false",
@@ -2224,6 +2234,7 @@ export function registerPersonaGuidance(api) {
       buildPersonaAuthorityContext(event, ctx),
       buildPersonaGenerationContext(event, ctx, authoritativePlan),
       relationshipContext,
+      buildIntimacyContext(event, ctx),
     ].filter(Boolean).join("\n\n");
     return { appendSystemContext: modelFacingContext(appendSystemContext) };
   }, { priority: 1_350, timeoutMs: 2_000 });

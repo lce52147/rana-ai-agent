@@ -6,6 +6,9 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const { localDiscordIds, withLocalSecurity } = require("../local_discord_ids");
 const { pathToFileURL } = require("url");
+const { openParfaitLedger, parfaitConfig, countedChars } = require("./parfait_ledger");
+const { openGiftLedger, giftConfig } = require("./gift_ledger");
+const { currencyCatalog, currencyById, parseExchange, parseGrant, grantNameCandidates, parseGiveToBot, runExchange, exchangeErrorReply, exchangeButtons, combineHoldings, holdingsDetail, isIntimacyBoardQuestion, isOwnIntimacyQuestion, isCombinedBoardQuestion } = require("./currency_exchange");
 
 const PORT = Number(process.env.RANA_HOT_TOOLS_PORT || 8091);
 const ROOT = __dirname;
@@ -288,15 +291,58 @@ function discordGetJson(pathname) {
   });
 }
 
-async function discordMemberRoles(userId) {
-  if (!userId || !DEFAULT_DISCORD_GUILD_ID) return [];
+async function discordMember(userId) {
+  if (!userId || !DEFAULT_DISCORD_GUILD_ID) return null;
   const cacheKey = `${DEFAULT_DISCORD_GUILD_ID}:${userId}`;
   const cached = discordRoleCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < DISCORD_MEMBER_ROLE_CACHE_MS) return cached.roles;
+  if (cached && Date.now() - cached.ts < DISCORD_MEMBER_ROLE_CACHE_MS) return cached.member;
   const member = await discordGetJson(`/guilds/${DEFAULT_DISCORD_GUILD_ID}/members/${encodeURIComponent(userId)}`);
-  const roles = Array.isArray(member?.roles) ? member.roles.map(String).filter(Boolean) : [];
-  discordRoleCache.set(cacheKey, { ts: Date.now(), roles });
-  return roles;
+  // A failed lookup (often a 429 when a leaderboard asks for ten names at once) is only kept for a
+  // minute; caching it as long as a real member showed 「某人」 on the board for the whole period.
+  discordRoleCache.set(cacheKey, { ts: member ? Date.now() : Date.now() - DISCORD_MEMBER_ROLE_CACHE_MS + 60_000, member });
+  return member;
+}
+
+// Names for a leaderboard: three lookups at a time, one retry after a pause for any that failed,
+// and the last name seen for that person before falling back to 「某人」.
+const lastKnownNames = new Map();
+// The runtime waits 5 s for the whole reply, so retries stop after about 3 s.
+async function boardNames(userIds, deadline = Date.now() + 3000) {
+  const names = new Array(userIds.length);
+  const lookup = async (i) => {
+    const id = String(userIds[i]);
+    let member = await discordMember(id).catch(() => null);
+    if (!member && Date.now() + 1200 < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      discordRoleCache.delete(`${DEFAULT_DISCORD_GUILD_ID}:${id}`);
+      member = await discordMember(id).catch(() => null);
+    }
+    if (member) lastKnownNames.set(id, displayNameOf(member));
+    names[i] = lastKnownNames.get(id) || "某人";
+  };
+  for (let i = 0; i < userIds.length; i += 3) {
+    await Promise.all([i, i + 1, i + 2].filter((j) => j < userIds.length).map(lookup));
+  }
+  return names;
+}
+
+// 「給 @很COG 200杯」 arrives with the mention as a name: find the one member whose nickname,
+// display name or username is exactly that name (guild member search, bot token).
+async function memberIdByName(names) {
+  if (!DEFAULT_DISCORD_GUILD_ID) return "";
+  for (const name of names) {
+    const found = await discordGetJson(`/guilds/${DEFAULT_DISCORD_GUILD_ID}/members/search?query=${encodeURIComponent(name)}&limit=10`);
+    const wanted = name.toLowerCase();
+    const exact = (Array.isArray(found) ? found : [])
+      .filter((member) => [member?.nick, member?.user?.global_name, member?.user?.username].some((value) => value && String(value).toLowerCase() === wanted));
+    if (exact.length === 1 && exact[0]?.user?.id) return String(exact[0].user.id);
+  }
+  return "";
+}
+
+async function discordMemberRoles(userId) {
+  const member = await discordMember(userId);
+  return Array.isArray(member?.roles) ? member.roles.map(String).filter(Boolean) : [];
 }
 
 function isOwner(payload, rules) {
@@ -342,6 +388,383 @@ function isOwnerOnlyIntent(text) {
 
 function ownerOnlyReply() {
   return { handled: true, kind: "security:not_owner", reply: "沒有權限。" };
+}
+
+const PARFAIT_DB_PATH = path.resolve(process.env.RANA_PARFAIT_DB_PATH || path.join(OPENCLAW_ROOT, "state", "rana_parfait.sqlite"));
+let parfaitLedgerHandle;
+function parfaitLedger() {
+  if (parfaitLedgerHandle === undefined) {
+    try {
+      parfaitLedgerHandle = openParfaitLedger({ dbPath: PARFAIT_DB_PATH });
+    } catch (error) {
+      console.error(`[rana-hot-tools] parfait ledger unavailable: ${error?.message || String(error)}`);
+      parfaitLedgerHandle = null;
+    }
+  }
+  return parfaitLedgerHandle;
+}
+
+// booster is undefined when the member lookup fails, so the ledger keeps the stored flag.
+async function parfaitMemberStatus(userId, cfg) {
+  const member = await discordMember(userId);
+  if (!member) return { bot: false, booster: undefined };
+  const boosterRoles = Array.isArray(cfg.boosterRoles) ? cfg.boosterRoles.map(String) : [];
+  const roles = Array.isArray(member.roles) ? member.roles.map(String) : [];
+  return {
+    bot: member.user?.bot === true,
+    booster: Boolean(member.premium_since) || roles.some((role) => boosterRoles.includes(role)),
+  };
+}
+
+function parfaitShortReply(result) {
+  return {
+    handled: true,
+    kind: "parfait_insufficient",
+    reply: `抹茶芭菲不夠。要 ${result.price} 杯，你有 ${result.balance} 杯。`,
+    parfait: { price: result.price, balance: result.balance },
+  };
+}
+
+// Owner and memoryWriteRoles stay free; everyone else pays rules.parfait.rememberPrice.
+// The charge is taken before the save and refunded when the save does not happen.
+async function chargeMemoryWrite(payload, rules) {
+  if (await canWriteMemory(payload, rules)) return { ok: true, free: true };
+  const cfg = parfaitConfig(rules);
+  const userId = senderIdOf(payload);
+  const ledger = cfg.enabled ? parfaitLedger() : null;
+  if (!userId || !ledger) return { ok: false, decision: ownerOnlyReply() };
+  const status = await parfaitMemberStatus(userId, cfg);
+  if (status.bot) return { ok: false, decision: ownerOnlyReply() };
+  let result;
+  try {
+    result = ledger.spend(userId, { amount: cfg.rememberPrice, reason: "memory_remember", booster: status.booster, config: cfg });
+  } catch (error) {
+    console.error(`[rana-hot-tools] parfait spend failed: ${error?.message || String(error)}`);
+    return { ok: false, decision: ownerOnlyReply() };
+  }
+  if (!result.ok) return { ok: false, decision: parfaitShortReply(result) };
+  return { ok: true, free: false, userId, price: result.price, balance: result.balance };
+}
+
+function settleMemoryCharge(charge, decision) {
+  if (!charge?.ok || charge.free) return decision;
+  if (decision?.kind === "memory_save") {
+    return { ...decision, reply: `${decision.reply}抹茶芭菲收下了。剩 ${charge.balance} 杯。`, parfait: { price: charge.price, balance: charge.balance } };
+  }
+  parfaitLedger()?.refund(charge.userId, { amount: charge.price, reason: "memory_remember_refund" });
+  return decision;
+}
+
+async function parfaitActivity(payload, kind) {
+  const rules = loadRules({});
+  const cfg = parfaitConfig(rules);
+  const ledger = cfg.enabled ? parfaitLedger() : null;
+  const userId = textOf(payload.user_id) || senderIdOf(payload);
+  if (!ledger) return { status: 503, body: { ok: false, error: "parfait ledger unavailable" } };
+  if (!/^\d{15,25}$/.test(userId)) return { status: 400, body: { ok: false, error: "user id required" } };
+  if (payload.is_bot === true) return { status: 200, body: { ok: true, counted: false, reason: "bot" } };
+  const guildId = textOf(payload.guild_id);
+  const otherGuild = /^\d{15,25}$/.test(guildId) && DEFAULT_DISCORD_GUILD_ID && guildId !== DEFAULT_DISCORD_GUILD_ID;
+  if (kind !== "balance" && otherGuild) {
+    return { status: 200, body: { ok: true, counted: false, reason: "other_guild" } };
+  }
+  if (kind !== "balance" && ledger.grantedToday(userId, { config: cfg })) {
+    if (kind === "text" && countedChars(textOf(payload.text)) >= cfg.textMinChars) ledger.noteText(userId, { config: cfg });
+    const result = kind === "voice"
+      ? ledger.recordVoice(userId, { seconds: payload.seconds, config: cfg })
+      : { ok: true, counted: false, reason: "already_granted" };
+    return { status: 200, body: result };
+  }
+  const status = await parfaitMemberStatus(userId, cfg);
+  if (status.bot) return { status: 200, body: { ok: true, counted: false, reason: "bot" } };
+  const options = { booster: status.booster, config: cfg };
+  if (kind === "text") return { status: 200, body: ledger.recordText(userId, { ...options, text: textOf(payload.text) }) };
+  if (kind === "voice") return { status: 200, body: ledger.recordVoice(userId, { ...options, seconds: payload.seconds }) };
+  // A balance question from the server is itself a message: count it before answering.
+  if (!otherGuild && guildId && textOf(payload.text)) ledger.recordText(userId, { ...options, text: textOf(payload.text) });
+  return { status: 200, body: ledger.balance(userId, options) };
+}
+
+const GIFT_DB_PATH = path.resolve(process.env.RANA_GIFT_DB_PATH || path.join(OPENCLAW_ROOT, "state", "rana_gifts.sqlite"));
+let giftLedgerHandle;
+function giftLedger() {
+  if (giftLedgerHandle === undefined) {
+    try {
+      giftLedgerHandle = openGiftLedger({ dbPath: GIFT_DB_PATH });
+    } catch (error) {
+      console.error(`[rana-hot-tools] gift ledger unavailable: ${error?.message || String(error)}`);
+      giftLedgerHandle = null;
+    }
+  }
+  return giftLedgerHandle;
+}
+
+const COUNT_WORDS = "(?:個|張|瓶|杯|份)";
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Leaderboard first: 「大家有多少X」 would otherwise also read as a balance question; then an
+// exchange between any two currencies (currency_exchange.js); then the balance.
+function classifyCurrencyQuestion(text, currencyName, { catalog, botId } = {}) {
+  const clean = stripMention(text).replace(/<@!?\d+>/g, "").trim();
+  const g = escapeRegex(currencyName);
+  if (new RegExp(`(?:大家|所有人|全部人|誰).{0,8}${g}|${g}.{0,4}(?:排行|排名|榜)|(?:排行|排名|榜).{0,4}${g}`, "u").test(clean)) return { kind: "leaderboard" };
+  if (catalog) {
+    const swap = parseExchange(clean, catalog, botId);
+    if (swap) return swap;
+  }
+  if (new RegExp(`(?:幾|多少)\\s*${COUNT_WORDS}?\\s*(?:的)?\\s*${g}|${g}\\s*(?:還)?(?:有|剩|剩下)?\\s*(?:幾|多少|餘額)`, "u").test(clean)) return { kind: "balance" };
+  return null;
+}
+
+function displayNameOf(member) {
+  const name = member?.nick || member?.user?.global_name || member?.user?.username || "某人";
+  // Names are shown, never mentioned: no pings, no markdown.
+  return String(name).replace(/@/g, "＠").replace(/[*_~`|>\\]/g, "").trim() || "某人";
+}
+
+// Text reply plus a panel the bot's voice bridge can post as an embed (like the music queue list),
+// with exchange buttons; an empty board still gets the panel so the buttons are reachable.
+async function leaderboardView(entries, me, label, unit, buttons = []) {
+  if (!entries.length) {
+    const none = `還沒有人有${label}。`;
+    return { reply: none, short: none, panel: { title: `${label}排行`, unit, rows: [], mine: none, total: 0, buttons } };
+  }
+  const names = await boardNames(entries.map((entry) => entry.user_id));
+  const lines = entries.map((entry, index) => `${entry.rank}. ${names[index]} ${entry.balance} ${unit}`);
+  const mine = me?.rank ? `你第 ${me.rank} 名，${me.balance} ${unit}。` : `你還沒有${label}。`;
+  const rows = entries.map((entry, index) => ({ rank: entry.rank, name: names[index], count: entry.balance }));
+  return {
+    reply: [`${label}排行：`, ...lines, mine].join("\n"),
+    short: mine,
+    panel: { title: `${label}排行`, unit, rows, mine, total: me?.total || entries.length, buttons },
+  };
+}
+
+// The asking user's five wallets, as runExchange expects them.
+async function currencyWallets(userId, rules) {
+  const parfaitCfg = parfaitConfig(rules);
+  const status = await parfaitMemberStatus(userId, parfaitCfg);
+  if (status.bot) return null;
+  const wallets = {};
+  const parfait = parfaitCfg.enabled ? parfaitLedger() : null;
+  if (parfait) {
+    const options = { booster: status.booster, config: parfaitCfg };
+    wallets.rana = {
+      balance: () => parfait.balance(userId, options),
+      spend: (amount, reason) => parfait.spend(userId, { ...options, amount, reason }),
+      credit: (amount, reason) => parfait.credit(userId, { ...options, amount, reason }),
+      refund: (amount, reason) => parfait.refund(userId, { amount, reason }),
+    };
+  }
+  const gifts = giftLedger();
+  for (const currency of currencyCatalog(rules)) {
+    const config = giftConfig(rules, currency.id);
+    if (!gifts || !config?.enabled) continue;
+    wallets[currency.id] = {
+      balance: () => gifts.balance(userId, { config }),
+      spend: (amount, reason) => gifts.spend(userId, { amount, reason, config }),
+      credit: (amount, reason) => gifts.credit(userId, { amount, reason, config }),
+      refund: (amount, reason) => gifts.refund(userId, { amount, reason, config }),
+    };
+  }
+  return wallets;
+}
+
+// 「禮物排行」 at any bot: the five currencies summed (1:1), with each one listed beside the total.
+async function combinedBoardView(userId, botId, rules) {
+  const catalog = currencyCatalog(rules);
+  const parfait = parfaitConfig(rules).enabled ? parfaitLedger() : null;
+  const gifts = giftLedger();
+  const ranked = combineHoldings(parfait ? parfait.allBalances() : [], gifts ? gifts.allBalances() : []);
+  const buttons = exchangeButtons(catalog, botId);
+  const me = ranked.find((p) => p.user_id === userId);
+  const mine = me ? `你第 ${me.rank} 名，共 ${me.total} 個（${holdingsDetail(me.parts, catalog)}）。` : "你還沒有禮物。";
+  if (!ranked.length) return { reply: "還沒有人有禮物。", short: "還沒有人有禮物。", panel: { title: "禮物排行", unit: "個", rows: [], mine: "還沒有人有禮物。", total: 0, buttons } };
+  const top = ranked.slice(0, 10);
+  const names = await boardNames(top.map((p) => p.user_id));
+  const rows = top.map((p, i) => ({ rank: p.rank, name: names[i], count: p.total, detail: holdingsDetail(p.parts, catalog) }));
+  const lines = rows.map((row) => `${row.rank}. ${row.name} ${row.count} 個（${row.detail}）`);
+  return {
+    reply: ["禮物排行：", ...lines, mine].join("\n"),
+    short: mine,
+    panel: { title: "禮物排行", unit: "個", rows, mine, total: ranked.length, buttons },
+  };
+}
+
+// 給 / 拿走 from the owners only (user decision 2026-10-26: rules.security.ownerIds, not roles).
+// 給 may pass the cap (rewards); 拿走 stops at 0. The owner's id is kept in the event reason.
+async function adjustCurrency(actorId, grant, rules) {
+  if (!isOwner({ senderId: actorId }, rules)) return { handled: true, kind: "grant_denied", reply: "不行。只有主人可以給或拿走。" };
+  const currency = currencyById(currencyCatalog(rules), grant.currency);
+  const wallets = await currencyWallets(grant.userId, rules);
+  if (!wallets) return { handled: true, kind: "grant_bot", reply: "bot 沒有錢包。" };
+  const wallet = wallets[grant.currency];
+  if (!currency || !wallet) return { handled: true, kind: "grant_unavailable", reply: "現在不能用。" };
+  const name = await discordMember(grant.userId).then(displayNameOf).catch(() => "某人");
+  const reason = `admin_${grant.action}:${actorId}`;
+  const held = wallet.balance().balance;
+  if (grant.action === "give") {
+    const done = wallet.refund(grant.count, reason);
+    return { handled: true, kind: "grant_give", reply: `好。${name} ${currency.name} +${grant.count} ${currency.unit}（現在 ${done.balance} ${currency.unit}）。` };
+  }
+  const amount = Math.min(grant.count, held);
+  if (!amount) return { handled: true, kind: "grant_take", reply: `${name} 沒有${currency.name}。` };
+  const done = wallet.spend(amount, reason);
+  return { handled: true, kind: "grant_take", reply: `好。${name} ${currency.name} -${amount} ${currency.unit}（剩 ${done.balance} ${currency.unit}）。` };
+}
+
+// Giving a character a gift (user decision 2026-10-26): it really leaves the user's wallet and is
+// recorded as received by that character, so gift-unlocked features can read it later.
+const CHARACTER_NAMES = Object.freeze({ rana: "樂奈", tomori: "燈", taki: "立希", soyo: "爽世", anon: "愛音" });
+const GIFT_THANKS = Object.freeze({ rana: "……收下了。", tomori: "謝、謝謝……", taki: "……謝了。", soyo: "謝謝你，我很開心。", anon: "哇！謝謝～" });
+
+// Intimacy levels (user 2026-10-26) are shared with the runtime, which sets the character's tone by them.
+// The level stays out of the reply text (user: it reads like a system message); it is returned for callers.
+const INTIMACY_TIERS_PATH = path.join(OPENCLAW_ROOT, "extensions", "rana-runtime", "intimacy_tiers.json");
+function intimacyLevelOf(total) {
+  try {
+    const levels = JSON.parse(fs.readFileSync(INTIMACY_TIERS_PATH, "utf8")).levels || [];
+    return levels.find((lv) => total >= lv.min && (lv.max == null || total <= lv.max)) || null;
+  } catch {
+    return null;
+  }
+}
+
+// 「@燈 親密度排行」 (user decision 2026-10-27: one board per character): who has given her the most,
+// with each person's level name. No exchange buttons on this card.
+async function intimacyBoardView(userId, botId) {
+  const gifts = giftLedger();
+  const name = CHARACTER_NAMES[botId] || "她";
+  const title = `${name}的親密度排行`;
+  const board = gifts ? gifts.intimacyBoard(botId, 10) : { rows: [], holders: 0, all: [] };
+  const me = board.all.find((row) => row.user_id === String(userId));
+  const level = (total) => { const lv = intimacyLevelOf(total); return lv ? `Lv.${lv.level} ${lv.name}` : ""; };
+  const mine = me ? `你第 ${me.rank} 名，送過 ${me.total} 個（${level(me.total)}）。` : `你還沒送過${name}禮物。`;
+  if (!board.rows.length) {
+    const none = `還沒有人送過${name}禮物。`;
+    return { reply: none, short: none, panel: { title, unit: "個", rows: [], mine: none, total: 0, buttons: [] } };
+  }
+  const names = await boardNames(board.rows.map((row) => row.user_id));
+  const rows = board.rows.map((row, i) => ({ rank: row.rank, name: names[i], count: row.total, detail: level(row.total) }));
+  return {
+    reply: [`${title}：`, ...rows.map((row) => `${row.rank}. ${row.name} ${row.count} 個（${row.detail}）`), mine].join("\n"),
+    short: mine,
+    panel: { title, unit: "個", rows, mine, total: board.holders, buttons: [] },
+  };
+}
+
+function ownIntimacyReply(userId, botId) {
+  const gifts = giftLedger();
+  const name = CHARACTER_NAMES[botId] || "她";
+  const total = gifts ? Object.values(gifts.received(botId, userId)).reduce((sum, n) => sum + Number(n || 0), 0) : 0;
+  const lv = intimacyLevelOf(total);
+  if (!lv) return `你還沒送過${name}禮物。`;
+  const next = lv.max == null ? "" : `，再送 ${lv.max + 1 - total} 個到下一級`;
+  return `你跟${name}：Lv.${lv.level}「${lv.name}」，送過 ${total} 個${next}。`;
+}
+
+async function giveToCharacter(userId, botId, gift, rules) {
+  const catalog = currencyCatalog(rules);
+  const currency = currencyById(catalog, gift.currency);
+  const wallets = await currencyWallets(userId, rules);
+  if (!wallets) return { handled: false };
+  const wallet = wallets[gift.currency];
+  const gifts = giftLedger();
+  if (!currency || !wallet || !gifts) return { handled: true, kind: "gift_give_unavailable", reply: "現在不能送。" };
+  const paid = wallet.spend(gift.count, `give_to_${botId}`);
+  if (!paid.ok) return { handled: true, kind: "gift_give_insufficient", reply: `${currency.name}不夠。你有 ${paid.balance} ${currency.unit}。` };
+  let received;
+  try {
+    received = gifts.receiveGift(botId, userId, currency.id, gift.count);
+  } catch (error) {
+    wallet.refund(gift.count, `give_to_${botId}_refund`);
+    throw error;
+  }
+  const name = CHARACTER_NAMES[botId] || "她";
+  const total = Object.values(received).reduce((sum, n) => sum + Number(n || 0), 0);
+  return {
+    handled: true,
+    kind: "gift_give",
+    reply: `${GIFT_THANKS[botId] || "謝謝。"}${currency.name} -${gift.count} ${currency.unit}（剩 ${paid.balance} ${currency.unit}）。${name}收過你 ${holdingsDetail(received, catalog)}。`,
+    received,
+    intimacy: intimacyLevelOf(total),
+  };
+}
+
+async function exchangeCurrency(userId, request, rules) {
+  const catalog = currencyCatalog(rules);
+  if (request.error) return { handled: true, kind: "gift_exchange_unclear", reply: exchangeErrorReply(request, catalog) };
+  const wallets = await currencyWallets(userId, rules);
+  if (!wallets) return { handled: false };
+  const rate = Number(rules?.gifts?.exchangeRate) || 1;
+  return { handled: true, ...runExchange({ request, catalog, wallets, rate }) };
+}
+
+// One entry point for every message aimed at a bot: answers 抹茶芭菲 / gift questions and
+// exchanges, and counts the message toward that character's gift. Returns handled:false otherwise.
+async function currencyCommand(payload) {
+  const rules = loadRules({});
+  const botId = textOf(payload.bot_id || payload.botId);
+  const userId = textOf(payload.user_id) || senderIdOf(payload);
+  // 「抹茶巴菲」 is a common typo; without this the question falls through to the model, which
+  // then guesses a number from the channel context.
+  const text = textOf(payload.text).replace(/巴菲/gu, "芭菲");
+  const guildId = textOf(payload.guild_id);
+  // The runtime does not always know the guild id; it always knows whether the message was a DM.
+  const inGuild = /^\d{15,25}$/.test(guildId)
+    ? !DEFAULT_DISCORD_GUILD_ID || guildId === DEFAULT_DISCORD_GUILD_ID
+    : payload.in_guild === true;
+  if (!/^\d{15,25}$/.test(userId) || !text) return { handled: false };
+  let targetId = textOf(payload.target_user_id);
+  if (!targetId && !/<@!?\d{15,25}>/.test(text)) targetId = await memberIdByName(grantNameCandidates(text));
+  const grant = parseGrant(text, currencyCatalog(rules), botId, targetId);
+  if (grant) return adjustCurrency(userId, grant, rules);
+  const gift = CHARACTER_NAMES[botId] ? parseGiveToBot(text, currencyCatalog(rules), [CHARACTER_NAMES[botId]]) : null;
+  if (gift) return giveToCharacter(userId, botId, gift, rules);
+  if (CHARACTER_NAMES[botId] && isIntimacyBoardQuestion(stripMention(text))) return { handled: true, kind: "intimacy_board", ...(await intimacyBoardView(userId, botId)) };
+  if (CHARACTER_NAMES[botId] && isOwnIntimacyQuestion(stripMention(text))) return { handled: true, kind: "intimacy_own", reply: ownIntimacyReply(userId, botId) };
+  if (isCombinedBoardQuestion(stripMention(text))) return { handled: true, kind: "gift_board", ...(await combinedBoardView(userId, botId, rules)) };
+  const parfaitCfg = parfaitConfig(rules);
+  const parfait = parfaitCfg.enabled ? parfaitLedger() : null;
+
+  if (botId === "rana") {
+    if (!parfait) return { handled: false };
+    const catalog = currencyCatalog(rules);
+    const question = classifyCurrencyQuestion(text, "抹茶芭菲", { catalog, botId });
+    if (!question) return { handled: false };
+    const status = await parfaitMemberStatus(userId, parfaitCfg);
+    if (status.bot) return { handled: false };
+    const options = { booster: status.booster, config: parfaitCfg };
+    if (inGuild) parfait.recordText(userId, { ...options, text });
+    if (question.kind === "leaderboard") {
+      parfait.balance(userId, options);
+      return { handled: true, kind: "parfait_leaderboard", ...(await leaderboardView(parfait.leaderboard(10), parfait.standing(userId), "抹茶芭菲", "杯", exchangeButtons(catalog, "rana"))) };
+    }
+    if (question.kind === "exchange") return exchangeCurrency(userId, question, rules);
+    const data = parfait.balance(userId, options);
+    return { handled: true, kind: "parfait_balance", reply: `抹茶芭菲，你有 ${data.balance} 杯（上限 ${data.cap}）。${data.today_granted ? "今天的已經拿了" : "今天的還沒拿"}。` };
+  }
+
+  const giftCfg = giftConfig(rules, botId);
+  const gifts = giftCfg?.enabled ? giftLedger() : null;
+  if (!gifts) return { handled: false };
+  if (inGuild) gifts.recordTalk(userId, { text, config: giftCfg });
+  const catalog = currencyCatalog(rules);
+  const question = classifyCurrencyQuestion(text, giftCfg.name, { catalog, botId });
+  if (!question) return { handled: false, kind: "gift_talk" };
+  const unit = giftCfg.unit;
+  if (question.kind === "leaderboard") {
+    return { handled: true, kind: "gift_leaderboard", ...(await leaderboardView(gifts.leaderboard(botId, 10), gifts.standing(botId, userId), giftCfg.name, unit, exchangeButtons(catalog, botId))) };
+  }
+  if (question.kind === "exchange") return exchangeCurrency(userId, question, rules);
+  if (question.kind === "balance") {
+    const data = gifts.balance(userId, { config: giftCfg });
+    return { handled: true, kind: "gift_balance", reply: `${giftCfg.name}，你有 ${data.balance} ${unit}（上限 ${data.cap}）。` };
+  }
+  return { handled: false, kind: "gift_talk" };
 }
 
 function stripMention(text) {
@@ -2095,15 +2518,18 @@ function handleFallback(text, rules) {
 async function decide(payload) {
   const rules = loadRules({ fallbacks: [], defaultReply: "無聊。" });
   const text = textOf(payload.body || payload.content || payload.text);
+  let memoryCharge = null;
   if (!isOwner(payload, rules) && isOwnerOnlyIntent(text)) {
     const clean = stripMention(text);
-    const allowedMemoryWrite = isMemoryWriteIntent(clean) && await canWriteMemory(payload, rules);
     const allowedMemoryDelete = isMemoryDeleteIntent(clean) && await canDeleteMemory(payload, rules);
-    if (!allowedMemoryWrite && !allowedMemoryDelete) {
-      return ownerOnlyReply();
+    if (!allowedMemoryDelete) {
+      if (!isMemoryWriteIntent(clean) || isMemoryDeleteIntent(clean)) return ownerOnlyReply();
+      memoryCharge = await chargeMemoryWrite(payload, rules);
+      if (!memoryCharge.ok) return memoryCharge.decision;
     }
   }
   return await Promise.resolve(handleMemory(text, rules, payload))
+    .then((result) => memoryCharge ? settleMemoryCharge(memoryCharge, result) : result)
     .then((result) => result || handleReminder(text, rules))
     .then(async (result) => result || await handleLeprechaun(text, rules))
     .then((result) => result || handleMonitor(text))
@@ -2165,9 +2591,6 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/memory/remember") {
     const payload = await parseBody(req);
     const rules = loadRules({});
-    if (senderIdOf(payload) && !await canWriteMemory(payload, rules)) {
-      return send(res, 403, ownerOnlyReply());
-    }
     const rawText = textOf(payload.text || payload.value);
     const text = normalizeMemoryText(isMemoryWriteIntent(rawText) ? extractMemoryText(rawText) : rawText);
     if (!text || isSensitiveMemory(text)) {
@@ -2175,13 +2598,15 @@ const server = http.createServer(async (req, res) => {
     }
     const memoryPath = memoryScopePath(payload);
     if (!memoryPath) return send(res, 400, { handled: false, kind: "memory_scope_invalid", error: "invalid memory scope" });
+    const charge = senderIdOf(payload) ? await chargeMemoryWrite(payload, rules) : { ok: true, free: true };
+    if (!charge.ok) return send(res, charge.decision.kind === "parfait_insufficient" ? 402 : 403, charge.decision);
     const sharedResult = await sharedMemoryRemember(payload, text);
     if (sharedResult) {
-      if (!sharedResult.ok) return send(res, 400, { handled: true, kind: "memory_rejected", reply: "這個不記。" });
-      return send(res, 200, { handled: true, kind: "memory_save", reply: "嗯。記住了。", status: await sharedMemoryStatus(payload.bot_id || payload.botId || payload.persona_id || payload.personaId) });
+      if (!sharedResult.ok) return send(res, 400, settleMemoryCharge(charge, { handled: true, kind: "memory_rejected", reply: "這個不記。" }));
+      return send(res, 200, settleMemoryCharge(charge, { handled: true, kind: "memory_save", reply: "嗯。記住了。", status: await sharedMemoryStatus(payload.bot_id || payload.botId || payload.persona_id || payload.personaId) }));
     }
     appendWorkspaceMemory(text, memoryPath);
-    return send(res, 200, { handled: true, kind: "memory_save", reply: "嗯。記住了。", status: memoryStatus(memoryPath) });
+    return send(res, 200, settleMemoryCharge(charge, { handled: true, kind: "memory_save", reply: "嗯。記住了。", status: memoryStatus(memoryPath) }));
   }
   if (req.method === "POST" && req.url === "/memory/delete") {
     const payload = await parseBody(req);
@@ -2279,6 +2704,51 @@ if (req.method === "POST" && req.url === "/memory/recall") {
     error: null,
   });
 }
+  // Exchange buttons on a leaderboard card (voice bridge): one click = one unit.
+  if (req.method === "POST" && req.url === "/parfait/exchange") {
+    const payload = await parseBody(req);
+    try {
+      const rules = loadRules({});
+      const userId = textOf(payload.user_id);
+      const catalog = currencyCatalog(rules);
+      const known = (id) => catalog.some((currency) => currency.id === id);
+      const source = textOf(payload.source);
+      const target = textOf(payload.target);
+      const count = Math.max(1, Math.min(30, Math.floor(Number(payload.count) || 1)));
+      if (!/^\d{15,25}$/.test(userId) || !known(source) || !known(target) || source === target) return send(res, 400, { handled: false, error: "bad exchange" });
+      const result = await exchangeCurrency(userId, { kind: "exchange", source, target, count }, rules);
+      console.log(`[rana-hot-tools] currency kind=${result.kind || "none"} via=button ${source}->${target} x${count}`);
+      return send(res, 200, result);
+    } catch (error) {
+      console.error(`[rana-hot-tools] exchange button failed: ${error?.message || String(error)}`);
+      return send(res, 200, { handled: false, error: "exchange failed" });
+    }
+  }
+  if (req.method === "POST" && req.url === "/parfait/command") {
+    const payload = await parseBody(req);
+    try {
+      const result = await currencyCommand(payload);
+      if (result.handled) console.log(`[rana-hot-tools] currency kind=${result.kind} bot=${textOf(payload.bot_id)} guild=${/^\d{15,25}$/.test(textOf(payload.guild_id)) ? "id" : "none"} in_guild=${payload.in_guild === true}`);
+      return send(res, 200, result);
+    } catch (error) {
+      console.error(`[rana-hot-tools] currency command failed: ${error?.message || String(error)}`);
+      return send(res, 200, { handled: false, error: "currency command failed" });
+    }
+  }
+  if (req.method === "POST" && ["/parfait/activity", "/parfait/voice", "/parfait/balance"].includes(req.url)) {
+    const payload = await parseBody(req);
+    const kind = req.url === "/parfait/voice" ? "voice" : req.url === "/parfait/balance" ? "balance" : "text";
+    try {
+      const result = await parfaitActivity(payload, kind);
+      if (result.body?.granted || result.body?.bonus) {
+        console.log(`[rana-hot-tools] parfait ${kind} granted=${result.body.granted} bonus=${result.body.bonus} streak=${result.body.streak}`);
+      }
+      return send(res, result.status, result.body);
+    } catch (error) {
+      console.error(`[rana-hot-tools] parfait ${kind} failed: ${error?.message || String(error)}`);
+      return send(res, 500, { ok: false, error: "parfait ledger error" });
+    }
+  }
   if (req.method === "POST" && req.url === "/decide") {
     const payload = await parseBody(req);
     const decision = await decide(payload);

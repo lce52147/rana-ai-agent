@@ -186,6 +186,65 @@ export async function hotFallback(event, ctx, signal) {
   return botContext.botId === "rana" ? sanitizeRanaTone(reply) || null : reply || null;
 }
 
+// 抹茶芭菲 and per-character gifts (hot_tools /parfait/command): every message aimed at a bot
+// is offered first. hot_tools counts it toward that character's gift and answers balance,
+// leaderboard and exchange requests; anything else comes back handled:false and continues.
+// Plain guild messages are counted for 抹茶芭菲 by Rana's voice-bridge worker instead.
+const VOICE_BRIDGE_URLS = {
+  rana: "http://127.0.0.1:8081",
+  tomori: "http://127.0.0.1:8082",
+  anon: "http://127.0.0.1:8083",
+  soyo: "http://127.0.0.1:8084",
+  taki: "http://127.0.0.1:8085",
+};
+
+// The hook does not always carry channelId; the session key names the channel for guild turns.
+export function textChannelIdOf(event, ctx, botContext) {
+  const direct = firstText(botContext?.channelId);
+  if (/^\d{15,25}$/.test(direct)) return direct;
+  const keys = [botContext?.sessionKey, event?.sessionKey, ctx?.sessionKey, event?.chat_id, event?.chatId, ctx?.chat_id, ctx?.chatId].map(firstText);
+  for (const key of keys) {
+    const match = key.match(/discord:(?:[^:]+:)?channel:(\d{15,25})/i);
+    if (match) return match[1];
+  }
+  return "";
+}
+
+// targetId: the one human the message mentions, from Discord's mention list; owner 給/拿走 needs it
+// when the text arrives with the mention already rendered as a name.
+export async function currencyCommandReply(event, ctx, botContext, text, post = postJson, targetId = "") {
+  // Unit tests must never write to the live ledgers through the real hot_tools.
+  if (post === postJson && process.env.NODE_TEST_CONTEXT) return null;
+  const userId = senderIdFromEvent(event, ctx);
+  if (!userId || !text) return null;
+  const inGuild = !isDirectMessageEvent(event, ctx);
+  const guildId = inGuild ? botContext.guildId || "" : "";
+  try {
+    const data = await post(`${HOT_TOOLS_URL}/parfait/command`, { bot_id: botContext.botId, user_id: userId, text, guild_id: guildId, in_guild: inGuild, target_user_id: firstText(targetId) }, undefined, 5000);
+    if (/(?:給|拿走|收回|沒收|扣)/u.test(text)) {
+      // Owner grants once failed silently because the mention arrived as a name; keep a trace (ids masked).
+      console.info(`[rana-runtime] currency grant-like text mention=${/<@!?\d{15,25}>/.test(text)} target=${firstText(targetId) ? "…" + firstText(targetId).slice(-4) : "none"} kind=${data?.kind || (data?.handled ? "handled" : "unhandled")}`);
+    }
+    if (!data?.handled) return null;
+    // Leaderboards go out as an embed from that character's own bot (same look as the music
+    // queue list); the text reply then only says the asker's rank. Plain text if the panel fails.
+    const bridgeUrl = VOICE_BRIDGE_URLS[botContext.botId];
+    const channelId = textChannelIdOf(event, ctx, botContext);
+    if (data.panel && data.short && inGuild && bridgeUrl && channelId) {
+      try {
+        const sent = await post(`${bridgeUrl}/voice/leaderboard-panel`, { text_channel_id: channelId, panel: data.panel }, undefined, 5000);
+        if (sent?.message_id) return firstText(data.short) || null;
+      } catch (error) {
+        console.warn(`[rana-runtime] leaderboard panel failed: ${error?.message || String(error)}`);
+      }
+    }
+    return firstText(data.reply) || null;
+  } catch (error) {
+    console.warn(`[rana-runtime] currency command failed: ${error?.message || String(error)}`);
+    return null;
+  }
+}
+
 export function senderIdFromEvent(event, ctx) {
   const resolved = resolveRequesterId(event, ctx);
   if (resolved) return resolved;
@@ -278,6 +337,7 @@ export function registerPreDispatch(api, handlers = {}) {
     handleStockResearchRequest,
     isModelOnlineCheck = isModelOnline,
     normalizeRouteText = (value) => value,
+    currencyCommandReplyHandler = currencyCommandReply,
   } = handlers;
 
   api.on(
@@ -288,6 +348,11 @@ export function registerPreDispatch(api, handlers = {}) {
       let routeText = routeTextFrom(event, ctx);
       ensureRouteTextFields(event, routeText);
       if (!routeText) return;
+
+      // Keep the original Discord mention text for deterministic commands.
+      // The conversational route text may rewrite the owner's mention into a persona alias,
+      // but hot-tools grant parsing requires the original <@userId> recipient mention.
+      const commandText = routeText;
 
       if (isTargetedEvent(event, ctx, routeText)) {
         const normalizedRouteText = normalizeRouteText(
@@ -315,6 +380,9 @@ export function registerPreDispatch(api, handlers = {}) {
           reply: { text: ownerIdentity },
         };
       }
+
+      const currencyText = await currencyCommandReplyHandler(event, ctx, botContext, commandText, undefined, rememberedContext?.currentExplicitTargetId || "");
+      if (currencyText) return { handled: true, reply: { text: currencyText } };
 
       const turnPlan = buildUnifiedTurnPlan(routeText, {
         personaId: botContext.personaId,

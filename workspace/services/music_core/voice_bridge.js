@@ -32,6 +32,7 @@ const {
 } = require('discord.js');
 const { createVisionFeedbackStore, parseVisionFeedbackCustomId } = require('./vision_feedback');
 const { localDiscordIds } = require('../local_discord_ids');
+const { createVoiceParfaitTracker, parfaitMessageReport } = require('./voice_parfait');
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const WORKER_CONFIG = workerData?.ranaVoiceBridge || {};
@@ -47,6 +48,9 @@ const LIVE_RESOLVE_HOST = configValue('LIVE_RESOLVE_HOST', '127.0.0.1');
 const LIVE_RESOLVE_PORT = parseInt(configValue('LIVE_RESOLVE_PORT', '8080'));
 const LIVE_RESOLVE_TIMEOUT_MS = parseInt(configValue('LIVE_RESOLVE_TIMEOUT_MS', '30000'));
 const STREAM_FRESH_MS = parseInt(configValue('STREAM_FRESH_MS', '60000'));
+// 抹茶芭菲 activity (messages + voice time) is tracked by Rana's worker only,
+// so five bots do not count the same server five times.
+const PARFAIT_WORKER = BOT_USER_ID === localDiscordIds().ranaBotUserId;
 
 if (!DISCORD_TOKEN) {
   console.error('[BOOT] ERROR: DISCORD_TOKEN is not set. Create a .env file with DISCORD_TOKEN=your_token');
@@ -101,6 +105,8 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,       // Required to see member objects
     GatewayIntentBits.GuildVoiceStates,   // CRITICAL for voice state updates
     GatewayIntentBits.MessageContent,     // Required by newer Discord API versions
+    // 抹茶芭菲 counts every guild message, mentioned or not; only Rana's worker listens.
+    ...(PARFAIT_WORKER ? [GatewayIntentBits.GuildMessages] : []),
   ],
   // Force a completely new gateway session on every restart.
   // If discord.js resumes a previous session whose voice state had 4006,
@@ -180,10 +186,90 @@ client.on('error', (err) => {
   log('DISCORD', `Error: ${err.message}`);
 });
 
+// ── 抹茶芭菲 activity ───────────────────────────────────────────────────────
+// Rana's worker only (PARFAIT_WORKER). Messages: every guild message from a person,
+// mentioned or not. Voice: voice-state events (join/leave/deafen) only; no audio is received.
+const PARFAIT_HOT_TOOLS_URL = configValue('RANA_HOT_TOOLS_URL', 'http://127.0.0.1:8091');
+const PARFAIT_VOICE_FLUSH_MS = parseInt(configValue('PARFAIT_VOICE_FLUSH_MS', '300000'));
+const parfaitBotFlags = new Map();
+
+function parfaitIsBot(userId) {
+  if (parfaitBotFlags.has(userId)) return parfaitBotFlags.get(userId);
+  const cached = client.users.cache.get(userId);
+  if (cached) {
+    parfaitBotFlags.set(userId, cached.bot === true);
+    return cached.bot === true;
+  }
+  parfaitBotFlags.set(userId, false);
+  client.users.fetch(userId).then((user) => {
+    if (user?.bot) {
+      parfaitBotFlags.set(userId, true);
+      voiceParfait?.refresh();
+    }
+  }).catch(() => {});
+  return false;
+}
+
+function postParfaitVoice(userId, seconds, guildId) {
+  return fetch(`${PARFAIT_HOT_TOOLS_URL}/parfait/voice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, seconds, guild_id: guildId }),
+    signal: AbortSignal.timeout(5000),
+  })
+    // 400 is a malformed id: drop it instead of retrying forever.
+    .then((res) => res.ok || res.status === 400)
+    .catch((err) => {
+      log('PARFAIT', `voice report failed: ${err.message}`);
+      return false;
+    });
+}
+
+function postParfaitMessage(data) {
+  const body = parfaitMessageReport(data);
+  if (!body) return;
+  fetch(`${PARFAIT_HOT_TOOLS_URL}/parfait/activity`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  }).catch((err) => log('PARFAIT', `message report failed: ${err.message}`));
+}
+
+if (PARFAIT_WORKER) client.ws.on(GatewayDispatchEvents.MessageCreate, postParfaitMessage);
+
+const voiceParfait = PARFAIT_WORKER
+  ? createVoiceParfaitTracker({
+    isBot: parfaitIsBot,
+    afkChannelOf: (guildId) => client.guilds.cache.get(guildId)?.afkChannelId || null,
+    report: postParfaitVoice,
+  })
+  : null;
+
+if (voiceParfait) {
+  client.ws.on(GatewayDispatchEvents.VoiceStateUpdate, (data) => {
+    if (data.member?.user) parfaitBotFlags.set(data.user_id, data.member.user.bot === true);
+    voiceParfait.update({ userId: data.user_id, guildId: data.guild_id, channelId: data.channel_id, selfDeaf: data.self_deaf, serverDeaf: data.deaf });
+  });
+  client.once('clientReady', () => {
+    for (const guild of client.guilds.cache.values()) {
+      for (const state of guild.voiceStates.cache.values()) {
+        voiceParfait.update({ userId: state.id, guildId: guild.id, channelId: state.channelId, selfDeaf: state.selfDeaf, serverDeaf: state.serverDeaf });
+      }
+    }
+    log('PARFAIT', `voice tracker on; ${voiceParfait.eligibleUsers().length} member(s) counting`);
+  });
+  setInterval(() => { voiceParfait.flush(); }, PARFAIT_VOICE_FLUSH_MS).unref?.();
+}
+
 client.on('interactionCreate', async (interaction) => {
   const customId = String(interaction.customId || '');
   if (interaction.isButton?.() && customId.startsWith('rana_queue|')) {
     await handleQueueButton(interaction);
+    return;
+  }
+  if (interaction.isButton?.() && customId.startsWith('rana_xchg|')) {
+    await handleExchangeButton(interaction);
     return;
   }
   if (interaction.isButton?.() && customId.startsWith('vf|')) {
@@ -1117,6 +1203,61 @@ function queuePanelPayload(guildId) {
   return { embeds: [embed], components: [row1, row2, row3] };
 }
 
+// 抹茶芭菲 / gift leaderboard from hot_tools /parfait/command, shown in the same style as the queue list.
+function leaderboardPanelPayload(panel) {
+  const unit = shortText(panel?.unit || '', 8);
+  const rows = (Array.isArray(panel?.rows) ? panel.rows : []).slice(0, 10);
+  const lines = rows.map((row) => `\`${String(Number(row.rank) || 0).padStart(2, '0')}\` ${shortText(row.name, 32)}　**${Number(row.count) || 0}** ${unit}${row.detail ? `　${shortText(row.detail, 48)}` : ''}`);
+  const embed = new EmbedBuilder()
+    .setColor(0x7fd6a4)
+    .setTitle(shortText(panel?.title || '排行', 64))
+    .addFields(
+      { name: `前 ${rows.length} 名`, value: lines.join('\n') || '還沒有人。', inline: false },
+      { name: '你', value: shortText(panel?.mine || '—', 64), inline: false },
+    )
+    .setFooter({ text: `更新 ${new Date().toLocaleTimeString('zh-TW', { hour12: false })}` });
+  // Exchange buttons from hot_tools; one click exchanges one unit for whoever clicks.
+  const buttons = (Array.isArray(panel?.buttons) ? panel.buttons : [])
+    .filter((b) => /^[a-z]{2,12}$/.test(String(b?.source || '')) && /^[a-z]{2,12}$/.test(String(b?.target || '')))
+    .slice(0, 10)
+    .map((b) => {
+      const button = new ButtonBuilder().setCustomId(`rana_xchg|${b.source}|${b.target}`).setLabel(shortText(b.label || '換', 40)).setStyle(ButtonStyle.Secondary);
+      return b.emoji ? button.setEmoji({ name: String(b.emoji) }) : button;
+    });
+  const components = [];
+  for (let i = 0; i < buttons.length; i += 5) components.push(new ActionRowBuilder().addComponents(...buttons.slice(i, i + 5)));
+  return { embeds: [embed], components, allowedMentions: { parse: [] } };
+}
+
+async function handleExchangeButton(interaction) {
+  const [, source, target] = String(interaction.customId).split('|');
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    const res = await fetch(`${PARFAIT_HOT_TOOLS_URL}/parfait/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: interaction.user?.id, source, target, count: 1, guild_id: interaction.guildId || '' }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json().catch(() => ({}));
+    log('PARFAIT', `exchange button ${source}->${target} status=${res.status} kind=${data.kind || 'none'}`);
+    await interaction.editReply({ content: data.reply || '現在不能換。' });
+  } catch (err) {
+    log('PARFAIT', `exchange button failed: ${err.message}`);
+    const reply = { content: '現在不能換。', ephemeral: true };
+    if (interaction.deferred || interaction.replied) await interaction.editReply({ content: reply.content }).catch(() => {});
+    else await interaction.reply(reply).catch(() => {});
+  }
+}
+
+async function publishLeaderboardPanel(textChannelId, panel) {
+  if (!discordReady) throw new Error('Discord bot not ready yet.');
+  const channel = await client.channels.fetch(textChannelId);
+  if (!channel || typeof channel.send !== 'function') throw new Error(`Channel ${textChannelId} is not a text channel`);
+  const message = await channel.send(leaderboardPanelPayload(panel));
+  return { message_id: message.id };
+}
+
 async function publishQueuePanel(guildId, textChannelId, forceNew = false) {
   if (!discordReady) throw new Error('Discord bot not ready yet.');
   if (!textChannelId) throw new Error('Missing text_channel_id');
@@ -1409,6 +1550,19 @@ const server = http.createServer(async (req, res) => {
       return respond(200, { ...getQueueState(guildId), status: 'panel', ...panel });
     } catch (err) {
       log('QUEUE_UI', `Panel failed guild=${guildId}: ${err.message}`);
+      return respond(500, { status: 'error', message: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/voice/leaderboard-panel') {
+    const body = await parseBody(req);
+    const textChannelId = body.text_channel_id;
+    if (!textChannelId || !body.panel) return respond(400, { error: 'Missing text_channel_id or panel' });
+    log('HTTP', `POST /voice/leaderboard-panel text_channel=${textChannelId} rows=${Array.isArray(body.panel.rows) ? body.panel.rows.length : 0}`);
+    try {
+      return respond(200, { status: 'panel', ...(await publishLeaderboardPanel(textChannelId, body.panel)) });
+    } catch (err) {
+      log('PARFAIT', `Leaderboard panel failed: ${err.message}`);
       return respond(500, { status: 'error', message: err.message });
     }
   }

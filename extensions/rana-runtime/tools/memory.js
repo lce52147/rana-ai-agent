@@ -87,12 +87,17 @@ function memoryActionSucceeded(action, data) {
 function personaSuccessReply(action, data, personaId) {
   if (!personaId || personaId === "rana") return firstText(data?.reply);
   const replies = memoryReplies(personaId);
-  if (action === "remember") return replies.remembered;
+  if (action === "remember") {
+    const balance = Number(data?.parfait?.balance);
+    return Number.isFinite(balance) ? `${replies.remembered}（抹茶芭菲剩 ${balance} 杯）` : replies.remembered;
+  }
   if (["forget", "delete", "remove"].includes(action)) return data?.removed > 0 ? replies.forgotten : replies.deleteMiss;
   return firstText(data?.reply);
 }
 
-function memoryFailureReply(action, personaId, kind) {
+function memoryFailureReply(action, personaId, kind, details) {
+  // The parfait wording is persona-neutral and carries the user's balance.
+  if (kind === "parfait_insufficient" && firstText(details?.reply)) return firstText(details.reply);
   const replies = memoryReplies(personaId);
   if (personaId && personaId !== "rana") {
     if (kind === "memory_rejected") return replies.rejectedSensitive;
@@ -176,7 +181,7 @@ export function normalizeMemoryToolResult(action, data, error, personaId) {
     success: false,
     status: "error",
     kind: firstText(details?.kind) || "memory_error",
-    reply: memoryFailureReply(action, personaId, firstText(details?.kind)),
+    reply: memoryFailureReply(action, personaId, firstText(details?.kind), details),
     error_code: "memory_unavailable",
   };
 }
@@ -210,7 +215,8 @@ export async function handleMemoryRequest(parsed, event, ctx, routeText, signal)
     if (!memoryTargetIsOwner(parsed.target, ownerContext.personaId)) return { handled: true, text: replies.refuseCrossMemory || replies.badAction, receipt: { action: "REMEMBER", status: "REFUSED_OTHER_PERSONA" } };
     parsed = { ...parsed, action: "remember" };   // "記到<自己>的記憶" is an ordinary remember
   }
-  if (parsed?.action === "remember" && !memoryWritePermission(event, ctx)) return null;
+  // Remember is open to everyone; hot_tools keeps writers free and charges
+  // everyone else 抹茶芭菲 (rules.json "parfait").
   if (parsed?.action === "remember" && !firstText(parsed.text)) return { handled: true, text: replies.rememberEmpty, receipt: { action: "REMEMBER", status: "EMPTY" } };
   if (["forget", "delete", "remove"].includes(parsed?.action) && !memoryWritePermission(event, ctx)) return null;
   const requestContext = memoryRequestContext(event, ctx);
@@ -269,6 +275,8 @@ export async function handleMemoryRequest(parsed, event, ctx, routeText, signal)
     ...scope,
   }, signal), hint);
   if (!outcome.success) {
+    // No receipt for a short balance: the fixed reply carries the numbers the model does not have.
+    if (outcome.kind === "parfait_insufficient") return { handled: true, text: outcome.reply };
     return {
       handled: true,
       text: outcome.reply,

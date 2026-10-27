@@ -25,7 +25,9 @@ export const CCIP_DEFAULTS = Object.freeze({
   // (_review 2026-10-25, 120 frames): nearest < 0.09, 3 pure neighbours from >= 2 shots
   // (or one shot when nearest < 0.03), and a bank "_other" class for side characters gave
   // 0 wrong names on clear faces; one side character in the second sample was still named.
-  maxDistance: 0.09,
+  // 2026-10-27: 0.09 -> 0.085; the last two wrong names were both in the 0.085-0.09 band, and a
+  // fresh blind set then gave 10/10 clear faces right with 0 wrong.
+  maxDistance: 0.085,
   singleShotMaxDistance: 0.03,
   // No face detected (extreme close-ups): match the whole frame instead, with a stricter
   // distance (3 close-ups 0.022-0.037 right, a side character at 0.074). 0 turns it off.
@@ -297,5 +299,9 @@ export function createCcipEngine(options, { runtimeFactory = defaultRuntime, rea
     }
   }
 
-  return { identifyFaces, status };
+  // The bank is cached after the first read; /v1/identity/reload drops it so a new bank file
+  // is picked up without restarting the sidecar.
+  const resetBank = () => { bankPromise = null; };
+
+  return { identifyFaces, status, resetBank };
 }

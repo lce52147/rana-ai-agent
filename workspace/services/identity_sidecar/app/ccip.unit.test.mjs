@@ -146,4 +146,16 @@ const off = await createCcipEngine({ ...CCIP_DEFAULTS, wholeFrameMaxDistance: 0,
   .identifyFaces(Buffer.from("jpeg"));
 check(off.faces.length === 0, "whole-frame matching can be turned off");
 
+// reload: resetBank makes the next request read the bank file again.
+let bankVersion = 1;
+const reloading = createCcipEngine({ ...CCIP_DEFAULTS, bankPath: "bank.json" }, {
+  runtimeFactory: fakeRuntime,
+  readBank: async () => JSON.stringify({ ...JSON.parse(await bankReader()), version: `v${bankVersion}` }),
+});
+check((await reloading.status()).bank_version === "v1", "the first bank is loaded");
+bankVersion = 2;
+check((await reloading.status()).bank_version === "v1", "the bank stays cached");
+reloading.resetBank();
+check((await reloading.status()).bank_version === "v2", "resetBank reloads the bank file");
+
 console.log(`ccip unit tests passed: ${passed}`);

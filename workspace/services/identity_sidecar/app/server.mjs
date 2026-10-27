@@ -288,6 +288,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/v1/identity/reload") {
       resetRuntime();
+      ccip?.resetBank();
       ready = false;
       return json(res, 200, { status: "ok", ready: false });
     }

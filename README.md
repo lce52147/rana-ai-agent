@@ -1,22 +1,23 @@
 # Rana AI Agent
 
-> 一個跑在 Discord 上的多角色 AI 夥伴系統：五個角色各自有人格、記憶、看圖、放音樂的能力，主模型跑在自己的電腦上（llama.cpp），雲端模型只當備援。
->
-> A self-hosted, multi-persona Discord agent built on the OpenClaw gateway: local-first LLM routing, per-user long-term memory, anime-face identity recognition, and a voice music bot — with ~570 automated tests guarding persona and tool contracts.
+我在自己的 Discord 伺服器上養了五個 AI 角色：要樂奈、千早愛音、長崎爽世、椎名立希、高松燈（取自《BanG Dream! It's MyGO!!!!!》，非商業的同人作品）。她們會在群組裡聊天、記得大家教過的事、看得懂丟進來的動畫截圖，也會進語音頻道放歌。
 
-這是一個非商業的同人作品，角色取自《BanG Dream! It's MyGO!!!!!》（要樂奈、千早愛音、長崎爽世、椎名立希、高松燈）。
+這個 repo 是整套系統的原始碼。主模型跑在我自己的電腦上，雲端模型只在本機掛掉或太慢的時候接手。
 
----
+*Five character bots for Discord, written as plugins for the OpenClaw gateway: local LLM first with a cloud fallback, long-term memory, anime face recognition, and voice music playback.*
 
-## 重點
+## 這個專案在做什麼
 
-- **五個角色、一套 runtime**：同一個 gateway 底下跑五個 Discord bot，每個角色有自己的 `PERSONA.json`、設定集（LORE）和語氣規則，但共用同一套對話管線、工具權限和輸出檢查。
-- **本地優先的模型路由**：主模型是本機 llama.cpp 上的 Gemma 12B，失敗或逾時才切到 Gemini Flash-Lite。看圖用另一台筆電上的 Qwen3-VL-8B，向量檢索用本機 EmbeddingGemma。
-- **「不准亂講」的架構**：工具結果（放歌、記憶、股價、圖片辨識）由程式決定真假，模型只負責用角色的口吻講出來（`tool_receipt.js`）。模型生成之後還有一層 output guard 擋掉捏造事實、洩漏內部資訊、冒充別的角色。
-- **長期記憶**：「記住 …」寫進 SQLite，分成個人記憶和群組共用記憶，有權限控管和敏感資訊過濾（密碼、token、身分證號不會被記下來）。問問題時記憶和設定集一起做向量檢索。
-- **看得懂動畫截圖的視覺管線**：臉部偵測 + CCIP 動漫臉特徵比對認角色（held-out top-1 97%，原本 CLIP kNN 只有 65%），再加 OCR 和 2,392 張截圖的場景索引找出「這是哪一集哪句台詞」。認不出來就說不知道，不亂猜。
-- **語音音樂機器人**：discord.js + Lavalink v4，FastAPI 做播放佇列，五個角色各自有語音橋接。
-- **測試把關**：約 570 個 `node:test` 測試，涵蓋角色邊界、工具授權、對話隔離、記憶誠實度、視覺辨識門檻，每次修 bug 都補回歸測試。
+一開始我只是想讓樂奈在群組裡陪大家聊天，後來越做越多。做下來發現，最難的不是讓模型會講話，而是讓它不要亂講。小模型很容易編出沒發生過的事、把別人教的東西講成自己的經歷、看圖的時候很有自信地叫錯名字。所以這個專案大部分的程式碼，其實都在處理「這句話有沒有根據」。
+
+幾個我比較滿意的部分：
+
+- 五個角色共用一套對話流程。每個角色有自己的 `PERSONA.json` 和設定集，但工具權限、記憶、輸出檢查是同一套，要加新角色不用重寫。
+- 工具結果由程式決定，模型只負責講。歌有沒有放成功、記憶有沒有存進去、股價多少，都是程式先算好再交給模型，模型只能用角色的口吻轉述（`tool_receipt.js`）。回覆生成之後還會再檢查一次，擋掉捏造的事實和內部資訊。
+- 本機優先。平常用我電腦上 llama.cpp 跑的 Gemma 12B，失敗或逾時才換 Gemini Flash-Lite。12B 能吃的 context 不多，我把原本每一輪都要塞進去的 187 行規則壓成精簡版的 prompt，它才跑得動。
+- 長期記憶。有人說「記住 …」就會存進 SQLite。關於自己的事只有本人查得到，關於別人或群組梗的會共用，也會記下是誰教的。密碼、token、證件號碼這類東西不會被存。
+- 看圖認角色。我一開始直接丟給視覺模型猜，40 張只對 5 張，而且錯的時候還很篤定。後來改成用 CCIP（動漫臉部特徵）去比對我標註過的臉庫，held-out 測試 top-1 是 97%，原本用 CLIP 只有 65%。再加上 OCR 和 2,392 張截圖做成的場景索引，找出是哪一幕、哪句台詞。距離不夠近或證據互相矛盾的時候，就回答不知道。
+- 語音放歌。用 discord.js 做語音橋接、Lavalink v4 播放，播放佇列是用 FastAPI 寫的。
 
 ## 系統架構
 
@@ -62,7 +63,7 @@ flowchart LR
   RT --> WS
 ```
 
-## 一句話進來之後發生什麼事
+## 一則訊息怎麼變成回覆
 
 ```mermaid
 flowchart TD
@@ -77,7 +78,9 @@ flowchart TD
   H --> I[角色口吻回覆]
 ```
 
-## 圖片辨識流程
+## 看圖的流程
+
+臉部比對要同時符合三個條件才算認出來：距離夠近、最近的三個鄰居都是同一個角色、而且來自不同鏡頭。臉和場景對不上的時候，我選擇相信臉。
 
 ```mermaid
 flowchart TD
@@ -98,17 +101,15 @@ flowchart TD
   EV -- 都沒有 --> IDK[回「不知道」]
 ```
 
-## 我做了哪些事
+## 我怎麼驗證
 
-| 領域 | 內容 |
-|---|---|
-| 對話 runtime | 設計 TurnPlan / turn isolation / context engine，把每一輪的證據來源分清楚；把 187 行 KEY=VALUE 規則壓成精簡 prompt（`lean_prompt.js`），本機 12B 模型才跑得動。 |
-| 角色系統 | 五個角色的 `PERSONA.json` schema、語氣模式（例如「熱飲」模式）、角色邊界測試，確保愛音不會講成樂奈。 |
-| 記憶 | SQLite 長期記憶、個人 / 共用範圍、作者追蹤、敏感資訊過濾、和設定集一起做向量檢索。修過「剛記住的東西問『X 是誰』卻答不知道」這類檢索 bug。 |
-| 視覺 | 從「VLM 自己猜（40 張對 5 張）」改成「臉部特徵比對 + 場景索引 + 開放集門檻」；建立盲測流程（先人工分級再跑分），驗收標準是清楚的主角 ≥95%、錯名 0。 |
-| 音樂 | Lavalink v4 + discord.js 語音橋接、FastAPI 佇列、播放策略。 |
-| 維運 | 一支 PowerShell 管理 10 個服務的啟動、健康檢查與 watchdog；公開前的發布流程會掃描並拒絕 Discord ID、token、內部檔案。 |
-| 測試 | `node:test` 單元 + 回歸測試約 570 個，加上 live 測試腳本（固定 21 句對話跑真 Discord）。 |
+- 大約 570 個 `node:test` 單元和回歸測試。每修一個 bug 我就補一個測試，例如「剛記住的事，馬上問『X 是誰』卻回答不知道」。
+- Live 測試：固定 21 句對話，直接在 Discord 上跑，看每個角色實際怎麼回。
+- 看圖用盲測。我先用肉眼把測試圖分成清楚、模糊、幾乎認不出來三級，再讓系統跑分，避免拿答案卷考自己。驗收標準是清楚的主角至少 95% 認對，而且一個名字都不能叫錯。
+
+## 開發方式
+
+這個專案我是和 AI coding agent（Claude、GPT）一起做的。需求、架構決策、驗收標準和測試由我決定，大部分實作和一部分 code review 交給 agent。我也用一套任務派發流程（TaskBus）把實作、測試、審查分給不同的 agent，各做各的再由我驗收。
 
 ## 技術棧
 
@@ -141,7 +142,7 @@ scripts/               設定集索引、測試 runner、工具腳本
 
 ## 執行
 
-這個 repo 是作者本機部署的原始碼，需要 OpenClaw gateway、llama.cpp、Lavalink 等外部程式（見 [EXTERNAL_BINARIES.md](EXTERNAL_BINARIES.md)），Discord ID 和區網主機位址放在不進 git 的 `discord_ids.local.json`、`hosts.local.json`（範例：`discord_ids.example.json`、`hosts.example.json`）。
+這是我本機實際在跑的原始碼，需要 OpenClaw gateway、llama.cpp、Lavalink 等外部程式（見 [EXTERNAL_BINARIES.md](EXTERNAL_BINARIES.md)），Discord ID 和區網主機位址放在不進 git 的 `discord_ids.local.json`、`hosts.local.json`（範例：`discord_ids.example.json`、`hosts.example.json`）。
 
 只跑測試：
 
